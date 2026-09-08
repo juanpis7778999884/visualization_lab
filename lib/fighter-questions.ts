@@ -103,13 +103,16 @@ const buildCompare: Builder = (rng, expr, domain) => {
 }
 
 // C) Signo de ∂f/∂x en un punto (¿crece o decrece al aumentar x?)
+// Las opciones ahora son en lenguaje natural puro ("Aumenta" / "Disminuye").
+// El símbolo ∂f/∂x se deja únicamente en `detail`, como dato de referencia
+// para quien ya conoce la notación, sin obligar a descifrarla para responder.
 const buildDerivX: Builder = (rng, expr, domain) => {
   const { x, y } = randomPoint(rng, domain)
   const fx = getPartialDerivativeX(expr, x, y)
   if (fx === null || Math.abs(fx) < 0.05) return null
 
-  const correct = fx > 0 ? 'Aumenta (∂f/∂x > 0)' : 'Disminuye (∂f/∂x < 0)'
-  const wrong = fx > 0 ? 'Disminuye (∂f/∂x < 0)' : 'Aumenta (∂f/∂x > 0)'
+  const correct = fx > 0 ? 'Aumenta' : 'Disminuye'
+  const wrong = fx > 0 ? 'Disminuye' : 'Aumenta'
   const options = shuffle([correct, wrong], rng)
 
   return {
@@ -120,14 +123,14 @@ const buildDerivX: Builder = (rng, expr, domain) => {
   }
 }
 
-// D) Signo de ∂f/∂y en un punto
+// D) Signo de ∂f/∂y en un punto — mismo cambio que en C.
 const buildDerivY: Builder = (rng, expr, domain) => {
   const { x, y } = randomPoint(rng, domain)
   const fy = getPartialDerivativeY(expr, x, y)
   if (fy === null || Math.abs(fy) < 0.05) return null
 
-  const correct = fy > 0 ? 'Aumenta (∂f/∂y > 0)' : 'Disminuye (∂f/∂y < 0)'
-  const wrong = fy > 0 ? 'Disminuye (∂f/∂y < 0)' : 'Aumenta (∂f/∂y > 0)'
+  const correct = fy > 0 ? 'Aumenta' : 'Disminuye'
+  const wrong = fy > 0 ? 'Disminuye' : 'Aumenta'
   const options = shuffle([correct, wrong], rng)
 
   return {
@@ -161,7 +164,78 @@ const buildHessian: Builder = (rng, expr, domain) => {
   }
 }
 
-const BUILDERS: Builder[] = [buildValueSign, buildCompare, buildDerivX, buildDerivY, buildHessian]
+// F) NUEVA — Forma de las curvas de nivel cerca de un punto (conceptual,
+// sin procedimiento: se lee del signo del determinante del Hessiano, pero
+// al estudiante se le pregunta la forma geométrica, no que calcule nada).
+// det(H) > 0 (cóncava arriba o abajo) → curvas de nivel cerradas tipo elipse.
+// det(H) < 0 (silla) → curvas de nivel abiertas tipo hipérbola.
+const buildLevelCurveShape: Builder = (rng, expr, domain) => {
+  const { x, y } = randomPoint(rng, domain, 0.25)
+  const { determinant } = getExactHessian(expr, x, y)
+  if (Math.abs(determinant) < 0.2) return null
+
+  const correct = determinant > 0 ? 'Elipses cerradas' : 'Hipérbolas (forma de silla)'
+  const wrong = determinant > 0 ? 'Hipérbolas (forma de silla)' : 'Elipses cerradas'
+  const options = shuffle([correct, wrong], rng)
+
+  return {
+    prompt: `🥚 Cerca de (${fmt(x)}, ${fmt(y)}), ¿qué forma tienen las curvas de nivel de f(x,y)?`,
+    detail:
+      determinant > 0
+        ? 'La superficie se comporta como un paraboloide cerca de ese punto.'
+        : 'La superficie se comporta como una silla de montar cerca de ese punto.',
+    options,
+    correctIndex: options.indexOf(correct),
+  }
+}
+
+// G) NUEVA — Conceptual pura: qué es una función de dos variables.
+// No requiere ningún cálculo sobre la función actual, solo teoría básica.
+const buildWhatIsFunction: Builder = (rng) => {
+  const correct = 'A cada par (x, y) le asigna un único valor de salida'
+  const wrongOptions = [
+    'A cada valor de salida le puede corresponder más de un par (x, y) distinto',
+    'Es cualquier ecuación que relacione x, y, z sin ninguna otra condición',
+  ]
+  const wrong = wrongOptions[Math.floor(rng() * wrongOptions.length)]
+  const options = shuffle([correct, wrong], rng)
+
+  return {
+    prompt: '📘 ¿Qué hace que f(x,y) sea realmente una función?',
+    detail: 'Pista: piensa en la regla de "una entrada, una sola salida".',
+    options,
+    correctIndex: options.indexOf(correct),
+  }
+}
+
+// H) NUEVA — Conceptual pura: qué representa una derivada parcial.
+const buildWhatIsPartialDerivative: Builder = (rng) => {
+  const correct = 'Qué tan inclinada está la superficie si te mueves en una sola dirección'
+  const wrongOptions = [
+    'El valor máximo que puede alcanzar la función en todo su dominio',
+    'La distancia entre dos puntos cualquiera de la superficie',
+  ]
+  const wrong = wrongOptions[Math.floor(rng() * wrongOptions.length)]
+  const options = shuffle([correct, wrong], rng)
+
+  return {
+    prompt: '📘 En términos simples, ¿qué mide una derivada parcial como ∂f/∂x?',
+    detail: 'Pista: es una pendiente, pero moviéndote solo en la dirección de x (o de y).',
+    options,
+    correctIndex: options.indexOf(correct),
+  }
+}
+
+const BUILDERS: Builder[] = [
+  buildValueSign,
+  buildCompare,
+  buildDerivX,
+  buildDerivY,
+  buildHessian,
+  buildLevelCurveShape,
+  buildWhatIsFunction,
+  buildWhatIsPartialDerivative,
+]
 
 /**
  * Genera la pregunta de la ronda de forma 100% determinista a partir de
@@ -178,7 +252,7 @@ export function generateFighterQuestion(
   const baseSeed = hashString(`${matchId}:${round}`)
 
   // Hasta 6 intentos con builders y semillas distintas, por si un punto
-  // sale ambiguo (derivada ~0, valores empatados, etc.)
+  // sale ambiguo (derivada ~0, valores empatados, determinante ~0, etc.)
   for (let attempt = 0; attempt < 6; attempt++) {
     const rng = mulberry32(baseSeed + attempt * 7919)
     const builderIndex = Math.floor(rng() * BUILDERS.length)
