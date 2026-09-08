@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ChevronRight, ChevronLeft, Sparkles, Target, Trophy, PenTool, Clock, Activity } from 'lucide-react'
+import { X, ChevronRight, ChevronLeft, Sparkles, Target, Trophy, PenTool, Clock, Activity, SkipForward } from 'lucide-react'
 
 interface TutorialStep {
   id: string
@@ -110,6 +110,11 @@ export function Tutorial({ onComplete }: TutorialProps) {
     }
   }
 
+  const handleSkip = () => {
+    setIsVisible(false)
+    onComplete()
+  }
+
   if (!isVisible) return null
 
   const step = STEPS[currentStep]
@@ -129,6 +134,17 @@ export function Tutorial({ onComplete }: TutorialProps) {
           exit={{ scale: 0.9, y: 20 }}
           transition={{ type: 'spring', damping: 25 }}
         >
+          {/* 🔥 BOTÓN OMITIR - ARRIBA A LA DERECHA */}
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={handleSkip}
+              className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors flex items-center gap-1 glass px-3 py-1.5 rounded-lg"
+            >
+              <SkipForward size={14} />
+              Omitir Tutorial
+            </button>
+          </div>
+
           {/* Progress bar */}
           <div className="mb-6 flex items-center gap-3">
             <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
