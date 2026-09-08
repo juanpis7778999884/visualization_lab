@@ -117,38 +117,6 @@ export function getSecondPartialDerivativeXY(
 }
 
 // ============================================================
-// MATRIZ HESSIANA
-// ============================================================
-
-export function getHessianMatrix(
-  expression: string,
-  x: number,
-  y: number
-): {
-  fxx: number | null
-  fxy: number | null
-  fyx: number | null
-  fyy: number | null
-  determinant: number | null
-} {
-  try {
-    const fxx = getSecondPartialDerivativeXX(expression, x, y)
-    const fxy = getSecondPartialDerivativeXY(expression, x, y)
-    const fyx = getSecondPartialDerivativeXY(expression, y, x)
-    const fyy = getSecondPartialDerivativeYY(expression, x, y)
-    
-    let determinant = null
-    if (fxx !== null && fyy !== null && fxy !== null) {
-      determinant = fxx * fyy - fxy * fxy
-    }
-    
-    return { fxx, fxy, fyx, fyy, determinant }
-  } catch {
-    return { fxx: null, fxy: null, fyx: null, fyy: null, determinant: null }
-  }
-}
-
-// ============================================================
 // HESSIANO EXACTO PARA FUNCIONES CUADRÁTICAS
 // ============================================================
 
@@ -162,27 +130,17 @@ export function getExactHessian(
   fxy: number
   determinant: number
 } {
-  // Para funciones cuadráticas simples
   const trimmed = expression.replace(/\s/g, '')
   
-  // x^2 + y^2
+  // Funciones cuadráticas conocidas
   if (trimmed === 'x^2+y^2' || trimmed === 'x*x+y*y') {
     return { fxx: 2, fyy: 2, fxy: 0, determinant: 4 }
   }
-  
-  // x^2 - y^2
   if (trimmed === 'x^2-y^2' || trimmed === 'x*x-y*y') {
     return { fxx: 2, fyy: -2, fxy: 0, determinant: -4 }
   }
-  
-  // -x^2 - y^2
   if (trimmed === '-x^2-y^2' || trimmed === '-x*x-y*y') {
     return { fxx: -2, fyy: -2, fxy: 0, determinant: 4 }
-  }
-  
-  // x^2 + 2xy + y^2
-  if (trimmed === 'x^2+2*x*y+y^2') {
-    return { fxx: 2, fyy: 2, fxy: 2, determinant: 0 }
   }
   
   // Para otras funciones, usar numérico
@@ -214,7 +172,7 @@ export function calculateDomainRange(
   const xStep = (domain.xMax - domain.xMin) / samples
   const yStep = (domain.yMax - domain.yMin) / samples
 
-  // Detectar posibles restricciones del dominio
+  // Detectar restricciones del dominio
   if (expression.includes('sqrt(')) {
     restrictions.push('Dominio restringido: radicando ≥ 0')
   }
@@ -259,7 +217,6 @@ export function calculateContourLine(
   const xStep = (domain.xMax - domain.xMin) / samples
   const yStep = (domain.yMax - domain.yMin) / samples
 
-  // Método de marching squares mejorado
   for (let i = 0; i < samples; i++) {
     for (let j = 0; j < samples; j++) {
       const x = domain.xMin + i * xStep
@@ -289,7 +246,7 @@ export function calculateContourLine(
     }
   }
 
-  // Ordenar puntos por proximidad
+  // Ordenar puntos
   if (points.length > 2) {
     const sorted: { x: number; y: number }[] = [points[0]]
     const remaining = points.slice(1)
@@ -344,7 +301,7 @@ export function generateSurfaceData(
   const xStep = (domain.xMax - domain.xMin) / resolution
   const yStep = (domain.yMax - domain.yMin) / resolution
 
-  // First pass: collect all z values to determine range
+  // Primera pasada: recolectar valores z
   const zValues: number[] = []
   for (let i = 0; i <= resolution; i++) {
     for (let j = 0; j <= resolution; j++) {
@@ -361,7 +318,7 @@ export function generateSurfaceData(
   const zMax = Math.max(...zValues)
   const zRange = Math.max(Math.abs(zMax - zMin), 0.001)
 
-  // Second pass: generate vertices and colors
+  // Segunda pasada: generar vértices y colores
   for (let i = 0; i <= resolution; i++) {
     for (let j = 0; j <= resolution; j++) {
       const x = domain.xMin + i * xStep
@@ -370,7 +327,7 @@ export function generateSurfaceData(
 
       vertices.push(x, z, y)
 
-      // Thermal color mapping mejorado
+      // Mapa térmico
       const normalized = Math.max(0, Math.min(1, (z - zMin) / zRange))
       let r, g, b
 
@@ -405,7 +362,7 @@ export function generateSurfaceData(
     }
   }
 
-  // Generate indices
+  // Generar índices
   for (let i = 0; i < resolution; i++) {
     for (let j = 0; j < resolution; j++) {
       const a = i * (resolution + 1) + j
@@ -427,7 +384,7 @@ export function generateSurfaceData(
 }
 
 // ============================================================
-// VALIDACIÓN
+// VALIDACIÓN DE EXPRESIONES
 // ============================================================
 
 export function validateExpression(expression: string): boolean {
@@ -437,34 +394,4 @@ export function validateExpression(expression: string): boolean {
   } catch {
     return false
   }
-}
-
-// ============================================================
-// COLOR TÉRMICO
-// ============================================================
-
-export function thermalColor(value: number, min: number, max: number): [number, number, number] {
-  const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)))
-
-  let r, g, b
-
-  if (normalized < 0.25) {
-    r = 0
-    g = normalized / 0.25
-    b = 1
-  } else if (normalized < 0.5) {
-    r = 0
-    g = 1
-    b = 1 - (normalized - 0.25) / 0.25
-  } else if (normalized < 0.75) {
-    r = (normalized - 0.5) / 0.25
-    g = 1
-    b = 0
-  } else {
-    r = 1
-    g = 1 - (normalized - 0.75) / 0.25
-    b = 0
-  }
-
-  return [r, g, b]
 }

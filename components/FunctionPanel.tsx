@@ -28,15 +28,19 @@ export function FunctionPanel({ currentFunction, onFunctionChange }: FunctionPan
       return
     }
 
+    // 🔥 CORREGIDO: Crear la función personalizada con id 'custom'
     const newFunc: MathFunction = {
       id: 'custom',
-      name: 'Custom Function',
+      name: 'Función Personalizada',
       expression: customExpression,
       description: 'User-defined expression',
       domain: { xMin: -5, xMax: 5, yMin: -5, yMax: 5 },
     }
 
+    // 🔥 Llamar al callback con la nueva función
     onFunctionChange(newFunc)
+    
+    // 🔥 Limpiar campos
     setCustomExpression('')
     setCustomError('')
     setShowCustomInput(false)
@@ -57,7 +61,7 @@ export function FunctionPanel({ currentFunction, onFunctionChange }: FunctionPan
             key={func.id}
             onClick={() => onFunctionChange(func)}
             className={`text-left p-4 rounded-lg transition-all ${
-              currentFunction.id === func.id
+              currentFunction.id === func.id && currentFunction.id !== 'custom'
                 ? 'glass-light neon-border shadow-lg shadow-cyan-400/20'
                 : 'glass hover:bg-white/10'
             }`}
