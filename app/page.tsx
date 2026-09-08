@@ -2,7 +2,17 @@
 
 import { useMemo, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Maximize2, Minimize2, RotateCw, Sparkles } from 'lucide-react'
+import {
+  Maximize2,
+  Minimize2,
+  RotateCw,
+  Sparkles,
+  BookOpen,
+  Brain,
+  Flame,
+  Target,
+  Trophy,
+} from 'lucide-react'
 import { Surface3D } from '@/components/Surface3D'
 import { ParticleBackground } from '@/components/ParticleBackground'
 import { FunctionPanel } from '@/components/FunctionPanel'
@@ -13,26 +23,35 @@ import { Header } from '@/components/Header'
 import { GamePanel } from '@/components/GamePanel'
 import { AchievementPanel } from '@/components/AchievementPanel'
 import { ExtraControls } from '@/components/ExtraControls'
+import { Tutorial } from '@/components/Tutorial'
+import { MathQuiz } from '@/components/MathQuiz'
+import { ParticleFire } from '@/components/ParticleFire'
 import { DEFAULT_FUNCTION } from '@/lib/functions'
 import { calculateDomainRange, getPartialDerivativeX, getPartialDerivativeY } from '@/lib/math-utils'
 import type { MathFunction } from '@/lib/types'
 
 export default function Page() {
-  // Estados base
+  // ============================================================
+  // ESTADOS BASE
+  // ============================================================
   const [currentFunction, setCurrentFunction] = useState<MathFunction>(DEFAULT_FUNCTION)
   const [selectedPoint, setSelectedPoint] = useState<{ x: number; y: number; z: number } | null>(null)
   const [isPresentationMode, setIsPresentationMode] = useState(false)
   const [isAutoRotating, setIsAutoRotating] = useState(false)
   const [contourLevel, setContourLevel] = useState(0.5)
 
-  // Estados del juego
+  // ============================================================
+  // ESTADOS DEL JUEGO (CAZADOR DE EXTREMOS)
+  // ============================================================
   const [gameMode, setGameMode] = useState(false)
   const [targetType, setTargetType] = useState<'max' | 'min' | 'saddle'>('max')
   const [score, setScore] = useState(0)
   const [attempts, setAttempts] = useState(0)
   const [gameMessage, setGameMessage] = useState('')
 
-  // Estados extras
+  // ============================================================
+  // ESTADOS EXTRAS
+  // ============================================================
   const [earthquake, setEarthquake] = useState(false)
   const [earthquakeMagnitude, setEarthquakeMagnitude] = useState(0.5)
   const [drawMode, setDrawMode] = useState(false)
@@ -40,7 +59,17 @@ export default function Page() {
   const [timeMode, setTimeMode] = useState(false)
   const [timeValue, setTimeValue] = useState(0)
 
-  // Logros
+  // ============================================================
+  // ESTADOS DE UI
+  // ============================================================
+  const [showTutorial, setShowTutorial] = useState(true)
+  const [showQuiz, setShowQuiz] = useState(false)
+  const [fireMode, setFireMode] = useState(false)
+  const [quizScore, setQuizScore] = useState(0)
+
+  // ============================================================
+  // LOGROS
+  // ============================================================
   const [achievements, setAchievements] = useState([
     { id: 'first-click', name: 'Primer contacto', description: 'Haz clic en la superficie', icon: '👆', unlocked: false },
     { id: 'max-finder', name: 'Buscador de cimas', description: 'Encuentra un máximo local', icon: '🏔️', unlocked: false },
@@ -50,35 +79,54 @@ export default function Page() {
     { id: 'explorer', name: 'Explorador', description: 'Visita 10 puntos diferentes', icon: '🧭', unlocked: false },
     { id: 'earthquake', name: 'Terremoto', description: 'Activa el modo terremoto', icon: '🌊', unlocked: false },
     { id: 'time-traveler', name: 'Viajero del tiempo', description: 'Activa el modo tiempo', icon: '⏳', unlocked: false },
+    { id: 'quiz-master', name: '🧠 Genio Matemático', description: 'Obtén 5/5 en el quiz', icon: '🏆', unlocked: false },
   ])
 
+  // ============================================================
+  // CÁLCULOS
+  // ============================================================
   const range = useMemo(
     () => calculateDomainRange(currentFunction.expression, currentFunction.domain),
     [currentFunction]
   )
 
-  // Efecto para inicializar contourLevel
+  // ============================================================
+  // EFECTOS
+  // ============================================================
   useEffect(() => {
     setContourLevel((range.min + range.max) / 2)
   }, [range])
 
-  // Función para verificar si un punto es extremo
+  useEffect(() => {
+    if (earthquake) unlockAchievement('earthquake')
+  }, [earthquake])
+
+  useEffect(() => {
+    if (timeMode) unlockAchievement('time-traveler')
+  }, [timeMode])
+
+  useEffect(() => {
+    if (quizScore === 5) unlockAchievement('quiz-master')
+  }, [quizScore])
+
+  // ============================================================
+  // FUNCIONES DEL JUEGO
+  // ============================================================
   const checkPoint = (x: number, y: number, z: number) => {
     if (!gameMode) return
 
     const fx = getPartialDerivativeX(currentFunction.expression, x, y)
     const fy = getPartialDerivativeY(currentFunction.expression, x, y)
-    
+
     if (fx === null || fy === null) {
       setGameMessage('❌ Punto no válido')
       return
     }
 
-    // Calcular Hessiano (determinante)
     const fxx = getPartialDerivativeX(currentFunction.expression, x + 0.001, y)
     const fyy = getPartialDerivativeY(currentFunction.expression, x, y + 0.001)
     const fxy = getPartialDerivativeX(currentFunction.expression, x, y + 0.001)
-    
+
     if (fxx === null || fyy === null || fxy === null) {
       setGameMessage('❌ No se puede calcular')
       return
@@ -111,10 +159,8 @@ export default function Page() {
     setAttempts(attempts + 1)
     if (isCorrect) {
       setScore(score + 100)
-      // Animación de éxito
-      if (typeof window !== 'undefined') {
-        const audio = new Audio()
-        // Crear sonido simple con Web Audio
+      // Sonido de éxito
+      if (soundEnabled && typeof window !== 'undefined') {
         try {
           const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
           const osc = ctx.createOscillator()
@@ -143,71 +189,65 @@ export default function Page() {
     setGameMessage(message)
   }
 
-  // Función para desbloquear logros
+  // ============================================================
+  // FUNCIONES DE LOGROS
+  // ============================================================
   const unlockAchievement = (id: string) => {
-    setAchievements(prev =>
-      prev.map(a => a.id === id ? { ...a, unlocked: true } : a)
-    )
+    setAchievements((prev) => prev.map((a) => (a.id === id ? { ...a, unlocked: true } : a)))
   }
 
-  // Función para manejar clicks en la superficie
+  // ============================================================
+  // MANEJADORES DE EVENTOS
+  // ============================================================
   const handlePointClick = (point: { x: number; y: number; z: number }) => {
     setSelectedPoint(point)
-    
-    // Desbloquear logro de primer clic
     unlockAchievement('first-click')
-    
-    // Desbloquear logro de explorador
-    const visitCount = achievements.find(a => a.id === 'explorer')
-    if (visitCount && !visitCount.unlocked) {
-      // Contar puntos visitados (simplificado)
-      unlockAchievement('explorer')
-    }
 
-    // Verificar si es un extremo (modo juego)
+    // Contar puntos visitados para el logro "Explorador"
+    const visits = parseInt(localStorage.getItem('math-visits') || '0') + 1
+    localStorage.setItem('math-visits', String(visits))
+    if (visits >= 10) unlockAchievement('explorer')
+
     checkPoint(point.x, point.y, point.z)
   }
 
-  // Función para cambiar función
   const handleFunctionChange = (func: MathFunction) => {
     setCurrentFunction(func)
     const nextRange = calculateDomainRange(func.expression, func.domain)
     setContourLevel((nextRange.min + nextRange.max) / 2)
     setSelectedPoint(null)
-    
-    // Contar funciones personalizadas
+
     if (func.id === 'custom') {
-      const customCount = parseInt(localStorage.getItem('custom-functions-count') || '0')
-      const newCount = customCount + 1
-      localStorage.setItem('custom-functions-count', String(newCount))
-      if (newCount >= 3) {
-        unlockAchievement('custom-master')
-      }
+      const customCount = parseInt(localStorage.getItem('custom-functions-count') || '0') + 1
+      localStorage.setItem('custom-functions-count', String(customCount))
+      if (customCount >= 3) unlockAchievement('custom-master')
     }
   }
 
-  // Efecto para logros de modos
-  useEffect(() => {
-    if (earthquake) unlockAchievement('earthquake')
-  }, [earthquake])
-
-  useEffect(() => {
-    if (timeMode) unlockAchievement('time-traveler')
-  }, [timeMode])
-
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden">
+      {/* Fondo de partículas */}
       <ParticleBackground />
+
+      {/* Header */}
       <Header
         isPresentationMode={isPresentationMode}
         onPresentationModeChange={setIsPresentationMode}
       />
 
+      {/* Tutorial */}
+      {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
+
+      {/* Contenedor principal */}
       <div className="relative min-h-screen pt-20">
+        {/* Panel izquierdo */}
         <AnimatePresence mode="wait">
           {!isPresentationMode && (
             <motion.aside
-              className="fixed left-4 top-24 bottom-4 w-80 z-30 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-cyan-400/30"
+              className="fixed left-4 top-24 bottom-4 w-80 z-30 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-cyan-400/30"
               initial={{ opacity: 0, x: -40 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -40 }}
@@ -218,14 +258,10 @@ export default function Page() {
                 currentFunction={currentFunction}
                 onFunctionChange={handleFunctionChange}
               />
-              
+
               {/* Panel de información */}
-              <InfoPanel
-                func={currentFunction}
-                selectedPoint={selectedPoint}
-                range={range}
-              />
-              
+              <InfoPanel func={currentFunction} selectedPoint={selectedPoint} range={range} />
+
               {/* Nivel de contorno */}
               <LevelSlider
                 min={range.min}
@@ -233,7 +269,7 @@ export default function Page() {
                 value={contourLevel}
                 onChange={setContourLevel}
               />
-              
+
               {/* 🎮 JUEGO: Cazador de extremos */}
               <GamePanel
                 gameMode={gameMode}
@@ -243,21 +279,23 @@ export default function Page() {
                 score={score}
                 attempts={attempts}
               />
-              
+
               {/* Mensaje del juego */}
               {gameMessage && (
                 <motion.div
-                  className="glass p-2 rounded-lg text-center text-sm font-bold"
+                  className={`glass p-2 rounded-lg text-center text-sm font-bold ${
+                    gameMessage.includes('🎉') ? 'text-yellow-400 border border-yellow-400/30' : 'text-red-400'
+                  }`}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                 >
                   {gameMessage}
                 </motion.div>
               )}
-              
+
               {/* 🏆 Logros */}
               <AchievementPanel achievements={achievements} />
-              
+
               {/* 🎛️ Controles extras */}
               <ExtraControls
                 earthquake={earthquake}
@@ -273,12 +311,56 @@ export default function Page() {
                 timeValue={timeValue}
                 setTimeValue={setTimeValue}
               />
+
+              {/* 📖 Tutorial */}
+              <motion.button
+                onClick={() => setShowTutorial(true)}
+                className="w-full glass p-3 rounded-lg text-sm font-medium text-cyan-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <BookOpen size={16} />
+                📖 Tutorial Interactivo
+              </motion.button>
+
+              {/* 🧠 Quiz */}
+              <motion.button
+                onClick={() => setShowQuiz(!showQuiz)}
+                className="w-full glass p-3 rounded-lg text-sm font-medium text-violet-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Brain size={16} />
+                🧠 Desafío Matemático
+              </motion.button>
+
+              {/* 🔥 Modo Fuego */}
+              <motion.button
+                onClick={() => setFireMode(!fireMode)}
+                className={`w-full glass p-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                  fireMode
+                    ? 'text-orange-400 border border-orange-400/30 bg-orange-400/10'
+                    : 'text-muted-foreground'
+                }`}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Flame size={16} />
+                🔥 Fuego en superficie
+              </motion.button>
+
+              {/* Quiz desplegable */}
+              {showQuiz && <MathQuiz onComplete={setQuizScore} />}
             </motion.aside>
           )}
         </AnimatePresence>
 
-        <section className={`${isPresentationMode ? 'w-full' : 'ml-[336px] mr-4'} h-[calc(100vh-6rem)] relative`}>
+        {/* Área de visualización 3D */}
+        <section
+          className={`${isPresentationMode ? 'w-full' : 'ml-[336px] mr-4'} h-[calc(100vh-6rem)] relative`}
+        >
           <div className="absolute inset-0 glass rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-cyan-400/10">
+            {/* Superficie 3D */}
             <Surface3D
               func={currentFunction}
               onPointClick={handlePointClick}
@@ -290,13 +372,21 @@ export default function Page() {
               timeValue={timeMode ? timeValue : 0}
             />
 
+            {/* Partículas de fuego */}
+            {fireMode && (
+              <ParticleFire enabled={fireMode} intensity={1} position={[0, 0.5, 0]} />
+            )}
+
+            {/* Overlay superior */}
             <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none">
               <div className="glass-light rounded-lg px-4 py-3 pointer-events-auto">
                 <div className="flex items-center gap-2 text-xs text-cyan-400 uppercase tracking-wider font-semibold">
                   <Sparkles size={14} />
                   Live Surface
                 </div>
-                <div className="mt-1 text-sm text-foreground font-mono">z = {currentFunction.expression}</div>
+                <div className="mt-1 text-sm text-foreground font-mono">
+                  z = {currentFunction.expression}
+                </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   k = {contourLevel.toFixed(2)}
                 </div>
@@ -320,12 +410,19 @@ export default function Page() {
                     ⏳ Tiempo: {timeValue.toFixed(2)}
                   </div>
                 )}
+                {fireMode && (
+                  <div className="mt-1 text-xs text-orange-400 animate-pulse">
+                    🔥 Modo Fuego Activo
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 pointer-events-auto">
                 <motion.button
                   onClick={() => setIsAutoRotating(!isAutoRotating)}
-                  className={`p-3 rounded-lg glass-light transition-all ${isAutoRotating ? 'text-cyan-400 neon-border' : 'text-muted-foreground'}`}
+                  className={`p-3 rounded-lg glass-light transition-all ${
+                    isAutoRotating ? 'text-cyan-400 neon-border' : 'text-muted-foreground'
+                  }`}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label="Toggle auto rotation"
@@ -344,16 +441,18 @@ export default function Page() {
               </div>
             </div>
 
+            {/* Overlay inferior */}
             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
               <div className="glass-light rounded-lg px-4 py-2 text-xs text-muted-foreground">
-                🖱️ Drag to orbit · 🔄 Scroll to zoom · 👆 Click to inspect
+                🖱️ Arrastrar para orbitar · 🔄 Scroll para zoom · 👆 Click para inspeccionar
                 {gameMode && ' · 🎯 Encuentra el extremo!'}
                 {drawMode && ' · ✏️ Dibuja sobre la superficie!'}
               </div>
               <div className="glass-light rounded-lg px-4 py-2 text-xs text-muted-foreground">
-                <span className="text-cyan-400">Thermal map</span> · {range.min.toFixed(2)} to {range.max.toFixed(2)}
-                {gameMode && (
-                  <span className="ml-2 text-yellow-400">🏆 {score} pts</span>
+                <span className="text-cyan-400">Mapa térmico</span> · {range.min.toFixed(2)} a {range.max.toFixed(2)}
+                {gameMode && <span className="ml-2 text-yellow-400">🏆 {score} pts</span>}
+                {quizScore > 0 && (
+                  <span className="ml-2 text-violet-400">🧠 Quiz: {quizScore}/5</span>
                 )}
               </div>
             </div>
@@ -361,6 +460,7 @@ export default function Page() {
         </section>
       </div>
 
+      {/* Punto interactivo */}
       <InteractivePoint point={selectedPoint} onDismiss={() => setSelectedPoint(null)} />
     </main>
   )
