@@ -23,7 +23,7 @@ interface CriticalPointsAnalyzerProps {
 }
 
 export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAnalyzerProps) {
-  const [resolution, setResolution] = useState(30)
+  const [resolution, setResolution] = useState(60)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [points, setPoints] = useState<CriticalPoint[]>([])
   const [selectedPoint, setSelectedPoint] = useState<CriticalPoint | null>(null)
@@ -59,7 +59,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       const foundPoints: CriticalPoint[] = []
       const { xMin, xMax, yMin, yMax } = func.domain
       
-      // Validar dominio
       if (xMin === undefined || xMax === undefined || yMin === undefined || yMax === undefined) {
         throw new Error('El dominio de la función no está definido correctamente')
       }
@@ -70,8 +69,9 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       console.log(`🔍 Resolución: ${resolution}x${resolution}`)
       console.log(`🔍 Step X: ${stepX}, Step Y: ${stepY}`)
 
-      // Búsqueda de puntos críticos
       let totalPoints = 0
+
+      // 🔥 MEJORADO: Buscar en toda la malla con mayor tolerancia
       for (let i = 0; i <= resolution; i++) {
         for (let j = 0; j <= resolution; j++) {
           const x = xMin + i * stepX
@@ -82,42 +82,45 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           
           totalPoints++
           
-          // Verificar gradiente ≈ 0 (criterio de punto crítico)
-          if (fx !== null && fy !== null && !isNaN(fx) && !isNaN(fy) && Math.abs(fx) < 0.01 && Math.abs(fy) < 0.01) {
+          // 🔥 TOLERANCIA MÁS ALTA: 0.05 en lugar de 0.01
+          if (fx !== null && fy !== null && !isNaN(fx) && !isNaN(fy) && Math.abs(fx) < 0.05 && Math.abs(fy) < 0.05) {
             const hessian = getHessian(func.expression, x, y)
             const z = evaluateFunction(func.expression, x, y) || 0
             
             let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
             
-            if (hessian.determinant > 0.001) {
+            // 🔥 MEJORADO: Usar umbrales más pequeños para Hessiano
+            if (hessian.determinant > 0.0001) {
               type = hessian.fxx > 0 ? 'min' : 'max'
-            } else if (hessian.determinant < -0.001) {
+            } else if (hessian.determinant < -0.0001) {
               type = 'saddle'
+            } else {
+              // Si el Hessiano es casi cero, pero el gradiente es cero, es un punto crítico degenerado
+              // Lo clasificamos como 'none' pero lo guardamos
+              type = 'none'
             }
             
-            if (type !== 'none') {
-              console.log(`🎯 Encontrado: ${type} en (${x.toFixed(3)}, ${y.toFixed(3)})`)
-              foundPoints.push({
-                x,
-                y,
-                z,
-                type,
-                hessian: hessian.determinant,
-                fxx: hessian.fxx,
-                fyy: hessian.fyy,
-                fxy: hessian.fxy
-              })
-            }
+            // Guardamos TODOS los puntos donde el gradiente es ≈ 0
+            foundPoints.push({
+              x,
+              y,
+              z,
+              type,
+              hessian: hessian.determinant,
+              fxx: hessian.fxx,
+              fyy: hessian.fyy,
+              fxy: hessian.fxy
+            })
           }
         }
       }
 
       console.log(`🔍 Puntos analizados: ${totalPoints}`)
-      console.log(`🎯 Puntos críticos encontrados: ${foundPoints.length}`)
+      console.log(`🎯 Puntos con gradiente ≈ 0: ${foundPoints.length}`)
 
-      // Filtrar puntos duplicados (cercanos)
+      // 🔥 MEJORADO: Filtrar duplicados y clasificar correctamente
       const filtered: CriticalPoint[] = []
-      const threshold = stepX * 0.8
+      const threshold = stepX * 0.9
       
       for (const p of foundPoints) {
         let isDuplicate = false
@@ -128,18 +131,42 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           }
         }
         if (!isDuplicate) {
-          filtered.push(p)
+          // Re-calcular tipo con mayor precisión
+          const hessian = getHessian(func.expression, p.x, p.y)
+          let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
+          
+          if (hessian.determinant > 0.0001) {
+            type = hessian.fxx > 0 ? 'min' : 'max'
+          } else if (hessian.determinant < -0.0001) {
+            type = 'saddle'
+          }
+          
+          filtered.push({
+            ...p,
+            type,
+            hessian: hessian.determinant,
+            fxx: hessian.fxx,
+            fyy: hessian.fyy,
+            fxy: hessian.fxy
+          })
         }
       }
 
+      // Filtrar solo los que tienen tipo definido
+      const finalPoints = filtered.filter(p => p.type !== 'none')
+
       // Ordenar por tipo (max, saddle, min)
-      filtered.sort((a, b) => {
+      finalPoints.sort((a, b) => {
         const order: Record<string, number> = { max: 0, saddle: 1, min: 2 }
         return order[a.type] - order[b.type]
       })
 
-      setPoints(filtered)
-      console.log(`✅ Análisis completado: ${filtered.length} puntos únicos`)
+      setPoints(finalPoints)
+      console.log(`✅ Análisis completado: ${finalPoints.length} puntos críticos únicos`)
+      
+      if (finalPoints.length === 0) {
+        console.log('💡 Sugerencia: Prueba con una función que tenga puntos críticos conocidos como x^2 + y^2')
+      }
       
     } catch (err) {
       console.error('❌ Error en el análisis:', err)
@@ -187,7 +214,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Target className="size-5 text-cyan-400" />
@@ -196,7 +222,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         <div className="flex items-center gap-2">
           {points.length > 0 && (
             <span className="text-xs text-muted-foreground">
-              {points.filter(p => p.type !== 'none').length} encontrados
+              {points.length} encontrados
             </span>
           )}
           <button
@@ -209,14 +235,12 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
           ❌ {error}
         </div>
       )}
 
-      {/* Resolución */}
       <div className="space-y-1">
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>Precisión de búsqueda</span>
@@ -224,8 +248,8 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         </div>
         <input
           type="range"
-          min={15}
-          max={60}
+          min={20}
+          max={80}
           step={5}
           value={resolution}
           onChange={(e) => setResolution(parseInt(e.target.value))}
@@ -233,7 +257,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         />
       </div>
 
-      {/* Resultados */}
       <AnimatePresence>
         {points.length > 0 && (
           <motion.div
@@ -258,10 +281,10 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
                     {getTypeIcon(p.type)}
                     <div>
                       <div className="text-sm font-medium text-foreground">
-                        ({p.x.toFixed(3)}, {p.y.toFixed(3)})
+                        ({p.x.toFixed(4)}, {p.y.toFixed(4)})
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        z = {p.z.toFixed(3)}
+                        z = {p.z.toFixed(4)}
                       </div>
                     </div>
                   </div>
@@ -270,7 +293,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
                       {getTypeLabel(p.type)}
                     </div>
                     <div className="text-[10px] text-muted-foreground">
-                      H = {p.hessian.toFixed(3)}
+                      H = {p.hessian.toFixed(4)}
                     </div>
                   </div>
                 </div>
@@ -280,7 +303,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         )}
       </AnimatePresence>
 
-      {/* Mensaje vacío */}
       {points.length === 0 && !isAnalyzing && !error && (
         <div className="text-center py-6 text-sm text-muted-foreground">
           <Sparkles className="size-8 mx-auto mb-2 text-cyan-400/50" />
@@ -289,7 +311,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         </div>
       )}
 
-      {/* Estado de análisis */}
       {isAnalyzing && (
         <div className="text-center py-4">
           <div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-cyan-400 border-t-transparent"></div>
@@ -297,7 +318,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         </div>
       )}
 
-      {/* Resumen estadístico */}
       {points.length > 0 && (
         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/10">
           <div className="text-center">
