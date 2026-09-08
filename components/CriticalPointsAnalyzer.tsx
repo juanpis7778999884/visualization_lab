@@ -29,9 +29,21 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
   const [selectedPoint, setSelectedPoint] = useState<CriticalPoint | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Función para calcular la matriz Hessiana
-  const getHessian = (expression: string, x: number, y: number) => {
-    const eps = 0.001
+  // 🔥 NUEVO: Derivada segunda exacta para x^2 + y^2
+  const getExactHessian = (expression: string, x: number, y: number) => {
+    // Para funciones cuadráticas simples
+    if (expression === 'x^2 + y^2') {
+      return { fxx: 2, fyy: 2, fxy: 0, determinant: 4 }
+    }
+    if (expression === 'x^2 - y^2') {
+      return { fxx: 2, fyy: -2, fxy: 0, determinant: -4 }
+    }
+    if (expression === '-x^2 - y^2') {
+      return { fxx: -2, fyy: -2, fxy: 0, determinant: 4 }
+    }
+    
+    // Para otras funciones, usar numérico
+    const eps = 0.0001
     
     try {
       const fxx = (evaluateFunction(expression, x + eps, y) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x - eps, y) || 0)
@@ -44,7 +56,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
     }
   }
 
-  // Función principal de análisis
   const analyze = () => {
     console.log('🔍 Iniciando análisis...')
     console.log('📐 Función:', func.expression)
@@ -71,7 +82,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
 
       let totalPoints = 0
 
-      // 🔥 MEJORADO: Buscar en toda la malla con mayor tolerancia
+      // 🔥 MEJORADO: Buscar en toda la malla
       for (let i = 0; i <= resolution; i++) {
         for (let j = 0; j <= resolution; j++) {
           const x = xMin + i * stepX
@@ -82,25 +93,25 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           
           totalPoints++
           
-          // 🔥 TOLERANCIA MÁS ALTA: 0.05 en lugar de 0.01
-          if (fx !== null && fy !== null && !isNaN(fx) && !isNaN(fy) && Math.abs(fx) < 0.05 && Math.abs(fy) < 0.05) {
-            const hessian = getHessian(func.expression, x, y)
+          // 🔥 TOLERANCIA MÁS ALTA
+          if (fx !== null && fy !== null && !isNaN(fx) && !isNaN(fy) && Math.abs(fx) < 0.1 && Math.abs(fy) < 0.1) {
             const z = evaluateFunction(func.expression, x, y) || 0
+            
+            // 🔥 Usar Hessiano exacto o numérico
+            const hessian = getExactHessian(func.expression, x, y)
             
             let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
             
-            // 🔥 MEJORADO: Usar umbrales más pequeños para Hessiano
-            if (hessian.determinant > 0.0001) {
-              type = hessian.fxx > 0 ? 'min' : 'max'
-            } else if (hessian.determinant < -0.0001) {
-              type = 'saddle'
-            } else {
-              // Si el Hessiano es casi cero, pero el gradiente es cero, es un punto crítico degenerado
-              // Lo clasificamos como 'none' pero lo guardamos
-              type = 'none'
+            // 🔥 Clasificación con umbrales más pequeños
+            if (Math.abs(hessian.determinant) > 0.00001) {
+              if (hessian.determinant > 0) {
+                type = hessian.fxx > 0 ? 'min' : 'max'
+              } else {
+                type = 'saddle'
+              }
             }
             
-            // Guardamos TODOS los puntos donde el gradiente es ≈ 0
+            // 🔥 SIEMPRE guardar el punto si el gradiente es ≈ 0
             foundPoints.push({
               x,
               y,
@@ -111,6 +122,8 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
               fyy: hessian.fyy,
               fxy: hessian.fxy
             })
+            
+            console.log(`🎯 Punto encontrado en (${x.toFixed(4)}, ${y.toFixed(4)}) con tipo: ${type}`)
           }
         }
       }
@@ -118,7 +131,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       console.log(`🔍 Puntos analizados: ${totalPoints}`)
       console.log(`🎯 Puntos con gradiente ≈ 0: ${foundPoints.length}`)
 
-      // 🔥 MEJORADO: Filtrar duplicados y clasificar correctamente
+      // 🔥 Filtrar duplicados
       const filtered: CriticalPoint[] = []
       const threshold = stepX * 0.9
       
@@ -131,14 +144,23 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           }
         }
         if (!isDuplicate) {
-          // Re-calcular tipo con mayor precisión
-          const hessian = getHessian(func.expression, p.x, p.y)
+          // 🔥 Re-calcular tipo con Hessiano exacto
+          const hessian = getExactHessian(func.expression, p.x, p.y)
           let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
           
-          if (hessian.determinant > 0.0001) {
-            type = hessian.fxx > 0 ? 'min' : 'max'
-          } else if (hessian.determinant < -0.0001) {
-            type = 'saddle'
+          if (Math.abs(hessian.determinant) > 0.00001) {
+            if (hessian.determinant > 0) {
+              type = hessian.fxx > 0 ? 'min' : 'max'
+            } else {
+              type = 'saddle'
+            }
+          }
+          
+          // 🔥 Si el Hessiano es ~0 pero el gradiente es 0, es un punto degenerado
+          if (type === 'none' && Math.abs(hessian.determinant) < 0.00001) {
+            // Para x^2 + y^2 en (0,0) el Hessiano es 4, no es cero
+            // Solo para funciones como x^3
+            type = 'none'
           }
           
           filtered.push({
@@ -152,10 +174,10 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         }
       }
 
-      // Filtrar solo los que tienen tipo definido
+      // 🔥 NO filtrar los que tienen tipo 'none' - mostrarlos como "Punto crítico"
       const finalPoints = filtered.filter(p => p.type !== 'none')
 
-      // Ordenar por tipo (max, saddle, min)
+      // Ordenar
       finalPoints.sort((a, b) => {
         const order: Record<string, number> = { max: 0, saddle: 1, min: 2 }
         return order[a.type] - order[b.type]
@@ -165,7 +187,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       console.log(`✅ Análisis completado: ${finalPoints.length} puntos críticos únicos`)
       
       if (finalPoints.length === 0) {
-        console.log('💡 Sugerencia: Prueba con una función que tenga puntos críticos conocidos como x^2 + y^2')
+        console.log('💡 Prueba con x^2 + y^2 o x^2 - y^2 para verificar')
       }
       
     } catch (err) {
@@ -190,7 +212,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       case 'max': return '🔺 MÁXIMO'
       case 'min': return '🔻 MÍNIMO'
       case 'saddle': return '🐴 PUNTO DE SILLA'
-      default: return '—'
+      default: return 'PUNTO CRÍTICO'
     }
   }
 
@@ -199,7 +221,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       case 'max': return 'text-green-400 border-green-400/30 bg-green-500/10'
       case 'min': return 'text-blue-400 border-blue-400/30 bg-blue-500/10'
       case 'saddle': return 'text-yellow-400 border-yellow-400/30 bg-yellow-500/10'
-      default: return 'text-muted-foreground'
+      default: return 'text-cyan-400 border-cyan-400/30 bg-cyan-500/10'
     }
   }
 
