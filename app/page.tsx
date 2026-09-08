@@ -14,6 +14,7 @@ import {
   Trophy,
   Menu,
   X,
+  Swords,
 } from 'lucide-react'
 import { Surface3D } from '@/components/Surface3D'
 import { ParticleBackground } from '@/components/ParticleBackground'
@@ -28,6 +29,7 @@ import { ExtraControls } from '@/components/ExtraControls'
 import { Tutorial } from '@/components/Tutorial'
 import { MathQuiz } from '@/components/MathQuiz'
 import { CriticalPointsAnalyzer } from '@/components/CriticalPointsAnalyzer'
+import { MathFighter } from '@/components/MathFighter'
 import { DEFAULT_FUNCTION } from '@/lib/functions'
 import { calculateDomainRange, getPartialDerivativeX, getPartialDerivativeY } from '@/lib/math-utils'
 import type { MathFunction } from '@/lib/types'
@@ -43,7 +45,7 @@ export default function Page() {
   const [contourLevel, setContourLevel] = useState(0.5)
 
   // ============================================================
-  // ESTADOS DEL JUEGO
+  // ESTADOS DEL JUEGO (CAZADOR DE EXTREMOS)
   // ============================================================
   const [gameMode, setGameMode] = useState(false)
   const [targetType, setTargetType] = useState<'max' | 'min' | 'saddle'>('max')
@@ -69,6 +71,7 @@ export default function Page() {
   const [quizScore, setQuizScore] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [showFighter, setShowFighter] = useState(false)
 
   // ============================================================
   // LOGROS
@@ -83,6 +86,7 @@ export default function Page() {
     { id: 'earthquake', name: 'Terremoto', description: 'Activa el modo terremoto', icon: '🌊', unlocked: false },
     { id: 'time-traveler', name: 'Viajero del tiempo', description: 'Activa el modo tiempo', icon: '⏳', unlocked: false },
     { id: 'quiz-master', name: '🧠 Genio Matemático', description: 'Obtén 5/5 en el quiz', icon: '🏆', unlocked: false },
+    { id: 'fighter-champion', name: '🥊 Campeón Fighter', description: 'Gana una pelea en MATH FIGHTER', icon: '🥊', unlocked: false },
   ])
 
   // ============================================================
@@ -112,7 +116,7 @@ export default function Page() {
     if (quizScore === 5) unlockAchievement('quiz-master')
   }, [quizScore])
 
-  // 🔥 DETECTAR MÓVIL (cliente-side)
+  // Detectar móvil
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768)
@@ -121,6 +125,17 @@ export default function Page() {
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
+
+  // Cerrar menú en resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768 && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [isMobileMenuOpen])
 
   // ============================================================
   // FUNCIONES DEL JUEGO
@@ -235,33 +250,33 @@ export default function Page() {
     }
   }
 
-  // Cerrar menú al hacer clic fuera
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768 && isMobileMenuOpen) {
-        setIsMobileMenuOpen(false)
-      }
+  const handleFighterWin = () => {
+    unlockAchievement('fighter-champion')
+  }
+
+  // Toggle Math Fighter
+  const toggleFighter = () => {
+    setShowFighter(!showFighter)
+    if (!showFighter) {
+      if (isMobile) setIsMobileMenuOpen(false)
     }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [isMobileMenuOpen])
+  }
 
   // ============================================================
   // RENDER
   // ============================================================
-  // 🔥 DETERMINAR SI EL PANEL ESTÁ ABIERTO EN MÓVIL
-  const isPanelVisible = isMobileMenuOpen || !isMobile
-
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden">
       <ParticleBackground />
-      
+
       <Header
         isPresentationMode={isPresentationMode}
         onPresentationModeChange={setIsPresentationMode}
         onSkipTutorial={() => setShowTutorial(false)}
         onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         isMobileMenuOpen={isMobileMenuOpen}
+        onOpenFighter={toggleFighter}
+        isFighterOpen={showFighter}
       />
 
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
@@ -380,6 +395,14 @@ export default function Page() {
                   </motion.button>
 
                   {showQuiz && <MathQuiz onComplete={setQuizScore} />}
+
+                  {/* ⚔️ MATH FIGHTER - 1vs1 */}
+                  {showFighter && (
+                    <MathFighter 
+                      currentFunction={currentFunction.expression} 
+                      onWin={handleFighterWin}
+                    />
+                  )}
                 </div>
               </motion.aside>
             </>
@@ -439,6 +462,11 @@ export default function Page() {
                     ⏳ {timeValue.toFixed(2)}
                   </div>
                 )}
+                {showFighter && (
+                  <div className="mt-1 text-[10px] text-red-400 animate-pulse">
+                    ⚔️ Fighter Activo
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 pointer-events-auto">
@@ -469,6 +497,7 @@ export default function Page() {
                 🖱️ Arrastrar · 🔄 Zoom
                 {gameMode && ' · 🎯 Cazar'}
                 {drawMode && ' · ✏️ Dibujar'}
+                {showFighter && ' · ⚔️ Fighter'}
               </div>
               <div className="glass-light rounded-lg px-2 py-1 md:px-4 md:py-2 text-[8px] md:text-xs text-muted-foreground">
                 <span className="text-cyan-400">Mapa</span> {range.min.toFixed(1)}-{range.max.toFixed(1)}

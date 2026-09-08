@@ -54,16 +54,17 @@ interface Move {
   timestamp: string
 }
 
+// 🔥 INTERFAZ CORREGIDA - AÑADIDA onWin
 interface MathFighterProps {
   currentFunction: string
+  onWin?: () => void
 }
 
 const COLORS = ['#00f0ff', '#7c3aed', '#ec4899', '#fbbf24', '#10b981', '#fb7185']
 const DAMAGE_CORRECT = 15
 const DAMAGE_WRONG = 5
 
-export function MathFighter({ currentFunction }: MathFighterProps) {
-  // Estados principales
+export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
   const [fighters, setFighters] = useState<Fighter[]>([])
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null)
   const [selectedFighter, setSelectedFighter] = useState<string | null>(null)
@@ -145,6 +146,10 @@ export function MathFighter({ currentFunction }: MathFighterProps) {
               setWinner(winnerFighter || null)
               setShowResult(true)
               setIsPlaying(false)
+              // 🔥 LLAMAR A onWin CUANDO ALGUIEN GANA
+              if (match.winner_id === selectedFighter && onWin) {
+                onWin()
+              }
             }
           }
         }
@@ -176,7 +181,7 @@ export function MathFighter({ currentFunction }: MathFighterProps) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [selectedFighter, currentMatch, fighters])
+  }, [selectedFighter, currentMatch, fighters, onWin])
 
   // Temporizador de desafío
   useEffect(() => {
@@ -281,6 +286,8 @@ export function MathFighter({ currentFunction }: MathFighterProps) {
         fighter_id: selectedFighter,
         won: true,
       })
+
+      if (onWin) onWin()
     }
 
     setTimeout(() => startChallenge(), 500)
@@ -320,6 +327,8 @@ export function MathFighter({ currentFunction }: MathFighterProps) {
         fighter_id: winnerId,
         won: true,
       })
+
+      if (winnerId === selectedFighter && onWin) onWin()
     }
 
     setTimeout(() => startChallenge(), 500)
@@ -355,6 +364,8 @@ export function MathFighter({ currentFunction }: MathFighterProps) {
           winner_id: currentMatch.player2_id,
         })
         .eq('id', currentMatch.id)
+      
+      if (currentMatch.player2_id === selectedFighter && onWin) onWin()
     } else if (newHp2 === 0) {
       await supabase
         .from('matches')
@@ -363,6 +374,8 @@ export function MathFighter({ currentFunction }: MathFighterProps) {
           winner_id: currentMatch.player1_id,
         })
         .eq('id', currentMatch.id)
+      
+      if (currentMatch.player1_id === selectedFighter && onWin) onWin()
     }
 
     setTimeout(() => startChallenge(), 500)

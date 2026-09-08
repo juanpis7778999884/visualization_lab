@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Zap, SkipForward, Menu, X } from 'lucide-react'
+import { Zap, SkipForward, Menu, X, Swords } from 'lucide-react'
 
 interface HeaderProps {
   isPresentationMode: boolean
@@ -9,6 +9,8 @@ interface HeaderProps {
   onSkipTutorial?: () => void
   onMenuToggle?: () => void
   isMobileMenuOpen?: boolean
+  onOpenFighter?: () => void
+  isFighterOpen?: boolean
 }
 
 export function Header({ 
@@ -16,7 +18,9 @@ export function Header({
   onPresentationModeChange, 
   onSkipTutorial,
   onMenuToggle,
-  isMobileMenuOpen = false
+  isMobileMenuOpen = false,
+  onOpenFighter,
+  isFighterOpen = false
 }: HeaderProps) {
   return (
     <motion.header
@@ -37,7 +41,25 @@ export function Header({
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          {/* Botón Menú Hamburguesa - SOLO MÓVIL */}
+          {/* 🔥 BOTÓN MATH FIGHTER - NUEVO */}
+          {onOpenFighter && (
+            <motion.button
+              onClick={onOpenFighter}
+              className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-sm font-medium transition-all flex items-center gap-1 md:gap-2 ${
+                isFighterOpen
+                  ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/30'
+                  : 'glass text-yellow-400 hover:bg-white/10 border border-yellow-400/20'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Swords size={16} className="md:size-[18px]" />
+              <span className="hidden sm:inline">⚔️ Math Fighter</span>
+              <span className="sm:hidden">Fighter</span>
+            </motion.button>
+          )}
+
+          {/* Menú Hamburguesa - SOLO MÓVIL */}
           {onMenuToggle && (
             <motion.button
               onClick={onMenuToggle}
@@ -49,7 +71,7 @@ export function Header({
             </motion.button>
           )}
 
-          {/* Omitir Tutorial - oculto en móvil */}
+          {/* Omitir Tutorial */}
           {onSkipTutorial && (
             <motion.button
               onClick={onSkipTutorial}
