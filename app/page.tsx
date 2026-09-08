@@ -25,7 +25,6 @@ import { AchievementPanel } from '@/components/AchievementPanel'
 import { ExtraControls } from '@/components/ExtraControls'
 import { Tutorial } from '@/components/Tutorial'
 import { MathQuiz } from '@/components/MathQuiz'
-import { ParticleFire } from '@/components/ParticleFire'
 import { CriticalPointsAnalyzer } from '@/components/CriticalPointsAnalyzer'
 import { DEFAULT_FUNCTION } from '@/lib/functions'
 import { calculateDomainRange, getPartialDerivativeX, getPartialDerivativeY } from '@/lib/math-utils'
@@ -65,7 +64,6 @@ export default function Page() {
   // ============================================================
   const [showTutorial, setShowTutorial] = useState(true)
   const [showQuiz, setShowQuiz] = useState(false)
-  const [fireMode, setFireMode] = useState(false)
   const [quizScore, setQuizScore] = useState(0)
 
   // ============================================================
@@ -160,7 +158,6 @@ export default function Page() {
     setAttempts(attempts + 1)
     if (isCorrect) {
       setScore(score + 100)
-      // Sonido de éxito
       if (soundEnabled && typeof window !== 'undefined') {
         try {
           const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -204,7 +201,6 @@ export default function Page() {
     setSelectedPoint(point)
     unlockAchievement('first-click')
 
-    // Contar puntos visitados para el logro "Explorador"
     const visits = parseInt(localStorage.getItem('math-visits') || '0') + 1
     localStorage.setItem('math-visits', String(visits))
     if (visits >= 10) unlockAchievement('explorer')
@@ -230,21 +226,15 @@ export default function Page() {
   // ============================================================
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden">
-      {/* Fondo de partículas */}
       <ParticleBackground />
-
-      {/* Header */}
       <Header
         isPresentationMode={isPresentationMode}
         onPresentationModeChange={setIsPresentationMode}
       />
 
-      {/* Tutorial */}
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
 
-      {/* Contenedor principal */}
       <div className="relative min-h-screen pt-20">
-        {/* Panel izquierdo */}
         <AnimatePresence mode="wait">
           {!isPresentationMode && (
             <motion.aside
@@ -254,16 +244,13 @@ export default function Page() {
               exit={{ opacity: 0, x: -40 }}
               transition={{ duration: 0.4 }}
             >
-              {/* Panel de funciones */}
               <FunctionPanel
                 currentFunction={currentFunction}
                 onFunctionChange={handleFunctionChange}
               />
 
-              {/* Panel de información */}
               <InfoPanel func={currentFunction} selectedPoint={selectedPoint} range={range} />
 
-              {/* Nivel de contorno */}
               <LevelSlider
                 min={range.min}
                 max={range.max}
@@ -271,13 +258,11 @@ export default function Page() {
                 onChange={setContourLevel}
               />
 
-              {/* 🧠 ANALIZADOR DE PUNTOS CRÍTICOS (NUEVO) */}
               <CriticalPointsAnalyzer
                 func={currentFunction}
                 onPointClick={handlePointClick}
               />
 
-              {/* 🎮 JUEGO: Cazador de extremos */}
               <GamePanel
                 gameMode={gameMode}
                 setGameMode={setGameMode}
@@ -287,7 +272,6 @@ export default function Page() {
                 attempts={attempts}
               />
 
-              {/* Mensaje del juego */}
               {gameMessage && (
                 <motion.div
                   className={`glass p-2 rounded-lg text-center text-sm font-bold ${
@@ -300,10 +284,8 @@ export default function Page() {
                 </motion.div>
               )}
 
-              {/* 🏆 Logros */}
               <AchievementPanel achievements={achievements} />
 
-              {/* 🎛️ Controles extras */}
               <ExtraControls
                 earthquake={earthquake}
                 setEarthquake={setEarthquake}
@@ -319,7 +301,6 @@ export default function Page() {
                 setTimeValue={setTimeValue}
               />
 
-              {/* 📖 Tutorial */}
               <motion.button
                 onClick={() => setShowTutorial(true)}
                 className="w-full glass p-3 rounded-lg text-sm font-medium text-cyan-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
@@ -330,7 +311,6 @@ export default function Page() {
                 📖 Tutorial Interactivo
               </motion.button>
 
-              {/* 🧠 Quiz */}
               <motion.button
                 onClick={() => setShowQuiz(!showQuiz)}
                 className="w-full glass p-3 rounded-lg text-sm font-medium text-violet-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
@@ -341,33 +321,15 @@ export default function Page() {
                 🧠 Desafío Matemático
               </motion.button>
 
-              {/* 🔥 Modo Fuego */}
-              <motion.button
-                onClick={() => setFireMode(!fireMode)}
-                className={`w-full glass p-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  fireMode
-                    ? 'text-orange-400 border border-orange-400/30 bg-orange-400/10'
-                    : 'text-muted-foreground'
-                }`}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Flame size={16} />
-                🔥 Fuego en superficie
-              </motion.button>
-
-              {/* Quiz desplegable */}
               {showQuiz && <MathQuiz onComplete={setQuizScore} />}
             </motion.aside>
           )}
         </AnimatePresence>
 
-        {/* Área de visualización 3D */}
         <section
           className={`${isPresentationMode ? 'w-full' : 'ml-[336px] mr-4'} h-[calc(100vh-6rem)] relative`}
         >
           <div className="absolute inset-0 glass rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-cyan-400/10">
-            {/* Superficie 3D */}
             <Surface3D
               func={currentFunction}
               onPointClick={handlePointClick}
@@ -379,12 +341,6 @@ export default function Page() {
               timeValue={timeMode ? timeValue : 0}
             />
 
-            {/* Partículas de fuego */}
-            {fireMode && (
-              <ParticleFire enabled={fireMode} intensity={1} position={[0, 0.5, 0]} />
-            )}
-
-            {/* Overlay superior */}
             <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none">
               <div className="glass-light rounded-lg px-4 py-3 pointer-events-auto">
                 <div className="flex items-center gap-2 text-xs text-cyan-400 uppercase tracking-wider font-semibold">
@@ -417,11 +373,6 @@ export default function Page() {
                     ⏳ Tiempo: {timeValue.toFixed(2)}
                   </div>
                 )}
-                {fireMode && (
-                  <div className="mt-1 text-xs text-orange-400 animate-pulse">
-                    🔥 Modo Fuego Activo
-                  </div>
-                )}
               </div>
 
               <div className="flex items-center gap-2 pointer-events-auto">
@@ -448,7 +399,6 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Overlay inferior */}
             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
               <div className="glass-light rounded-lg px-4 py-2 text-xs text-muted-foreground">
                 🖱️ Arrastrar para orbitar · 🔄 Scroll para zoom · 👆 Click para inspeccionar
@@ -467,7 +417,6 @@ export default function Page() {
         </section>
       </div>
 
-      {/* Punto interactivo */}
       <InteractivePoint point={selectedPoint} onDismiss={() => setSelectedPoint(null)} />
     </main>
   )

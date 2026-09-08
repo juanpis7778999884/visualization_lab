@@ -44,7 +44,6 @@ function SurfaceMesh({
   const [originalPositions, setOriginalPositions] = useState<Float32Array | null>(null)
   const [currentRange, setCurrentRange] = useState({ min: 0, max: 1 })
 
-  // Generar geometría de la superficie
   const generatedGeometry = useMemo(() => {
     let expression = func.expression
     
@@ -68,7 +67,6 @@ function SurfaceMesh({
     setOriginalPositions(new Float32Array(positions))
   }, [generatedGeometry])
 
-  // Efecto terremoto
   useFrame(({ clock }) => {
     if (!geometry || !originalPositions) return
     if (!earthquake || earthquakeMagnitude === 0) {
@@ -97,7 +95,6 @@ function SurfaceMesh({
     geometry.computeVertexNormals()
   })
 
-  // Calcular curva de nivel
   const contourPoints = useMemo(() => {
     try {
       let expression = func.expression
@@ -161,7 +158,6 @@ function SurfaceMesh({
         />
       </mesh>
 
-      {/* Plano de corte */}
       <mesh position={[0, contourLevel, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[10, 10]} />
         <meshBasicMaterial
@@ -172,7 +168,6 @@ function SurfaceMesh({
         />
       </mesh>
 
-      {/* Curva de nivel */}
       {contourPoints.length > 2 && (
         <Line
           points={contourPoints}
@@ -182,7 +177,6 @@ function SurfaceMesh({
         />
       )}
 
-      {/* 🔥 PUNTOS CRÍTICOS (NUEVO) */}
       {criticalPoints.map((p, i) => {
         const color = p.type === 'max' ? 0x00ff00 : p.type === 'min' ? 0x0088ff : 0xffcc00
         return (
@@ -193,7 +187,6 @@ function SurfaceMesh({
         )
       })}
 
-      {/* Líneas dibujadas */}
       {drawnPoints.length > 1 && (
         <Line
           points={drawnPoints}
@@ -203,7 +196,6 @@ function SurfaceMesh({
         />
       )}
 
-      {/* Iluminación */}
       <ambientLight intensity={earthquake ? 0.8 : 0.5} color={0xffffff} />
       <directionalLight position={[10, 15, 10]} intensity={earthquake ? 2 : 1.2} color={0xffffff} />
       <directionalLight position={[-10, 8, -10]} intensity={0.8} color={0x7c3aed} />

@@ -27,95 +27,128 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [points, setPoints] = useState<CriticalPoint[]>([])
   const [selectedPoint, setSelectedPoint] = useState<CriticalPoint | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   // Función para calcular la matriz Hessiana
   const getHessian = (expression: string, x: number, y: number) => {
     const eps = 0.001
     
-    const fxx = (evaluateFunction(expression, x + eps, y) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x - eps, y) || 0)
-    const fyy = (evaluateFunction(expression, x, y + eps) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x, y - eps) || 0)
-    const fxy = ((evaluateFunction(expression, x + eps, y + eps) || 0) - (evaluateFunction(expression, x + eps, y - eps) || 0) - (evaluateFunction(expression, x - eps, y + eps) || 0) + (evaluateFunction(expression, x - eps, y - eps) || 0)) / 4
-    
-    return { fxx, fyy, fxy, determinant: fxx * fyy - fxy * fxy }
+    try {
+      const fxx = (evaluateFunction(expression, x + eps, y) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x - eps, y) || 0)
+      const fyy = (evaluateFunction(expression, x, y + eps) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x, y - eps) || 0)
+      const fxy = ((evaluateFunction(expression, x + eps, y + eps) || 0) - (evaluateFunction(expression, x + eps, y - eps) || 0) - (evaluateFunction(expression, x - eps, y + eps) || 0) + (evaluateFunction(expression, x - eps, y - eps) || 0)) / 4
+      
+      return { fxx, fyy, fxy, determinant: fxx * fyy - fxy * fxy }
+    } catch {
+      return { fxx: 0, fyy: 0, fxy: 0, determinant: 0 }
+    }
   }
 
   // Función principal de análisis
   const analyze = () => {
+    console.log('🔍 Iniciando análisis...')
+    console.log('📐 Función:', func.expression)
+    console.log('📊 Dominio:', func.domain)
+    
+    setError(null)
     setIsAnalyzing(true)
     setPoints([])
     setSelectedPoint(null)
     
-    const foundPoints: CriticalPoint[] = []
-    const { xMin, xMax, yMin, yMax } = func.domain
-    const stepX = (xMax - xMin) / resolution
-    const stepY = (yMax - yMin) / resolution
+    try {
+      const foundPoints: CriticalPoint[] = []
+      const { xMin, xMax, yMin, yMax } = func.domain
+      
+      // Validar dominio
+      if (xMin === undefined || xMax === undefined || yMin === undefined || yMax === undefined) {
+        throw new Error('El dominio de la función no está definido correctamente')
+      }
+      
+      const stepX = (xMax - xMin) / resolution
+      const stepY = (yMax - yMin) / resolution
+      
+      console.log(`🔍 Resolución: ${resolution}x${resolution}`)
+      console.log(`🔍 Step X: ${stepX}, Step Y: ${stepY}`)
 
-    // Búsqueda de puntos críticos
-    for (let i = 0; i <= resolution; i++) {
-      for (let j = 0; j <= resolution; j++) {
-        const x = xMin + i * stepX
-        const y = yMin + j * stepY
-        
-        const fx = getPartialDerivativeX(func.expression, x, y)
-        const fy = getPartialDerivativeY(func.expression, x, y)
-        
-        // Verificar gradiente ≈ 0 (criterio de punto crítico)
-        if (fx !== null && fy !== null && Math.abs(fx) < 0.01 && Math.abs(fy) < 0.01) {
-          const hessian = getHessian(func.expression, x, y)
-          const z = evaluateFunction(func.expression, x, y) || 0
+      // Búsqueda de puntos críticos
+      let totalPoints = 0
+      for (let i = 0; i <= resolution; i++) {
+        for (let j = 0; j <= resolution; j++) {
+          const x = xMin + i * stepX
+          const y = yMin + j * stepY
           
-          let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
+          const fx = getPartialDerivativeX(func.expression, x, y)
+          const fy = getPartialDerivativeY(func.expression, x, y)
           
-          if (hessian.determinant > 0.001) {
-            type = hessian.fxx > 0 ? 'min' : 'max'
-          } else if (hessian.determinant < -0.001) {
-            type = 'saddle'
-          }
+          totalPoints++
           
-          if (type !== 'none') {
-            foundPoints.push({
-              x,
-              y,
-              z,
-              type,
-              hessian: hessian.determinant,
-              fxx: hessian.fxx,
-              fyy: hessian.fyy,
-              fxy: hessian.fxy
-            })
+          // Verificar gradiente ≈ 0 (criterio de punto crítico)
+          if (fx !== null && fy !== null && !isNaN(fx) && !isNaN(fy) && Math.abs(fx) < 0.01 && Math.abs(fy) < 0.01) {
+            const hessian = getHessian(func.expression, x, y)
+            const z = evaluateFunction(func.expression, x, y) || 0
+            
+            let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
+            
+            if (hessian.determinant > 0.001) {
+              type = hessian.fxx > 0 ? 'min' : 'max'
+            } else if (hessian.determinant < -0.001) {
+              type = 'saddle'
+            }
+            
+            if (type !== 'none') {
+              console.log(`🎯 Encontrado: ${type} en (${x.toFixed(3)}, ${y.toFixed(3)})`)
+              foundPoints.push({
+                x,
+                y,
+                z,
+                type,
+                hessian: hessian.determinant,
+                fxx: hessian.fxx,
+                fyy: hessian.fyy,
+                fxy: hessian.fxy
+              })
+            }
           }
         }
       }
-    }
 
-    // Filtrar puntos duplicados (cercanos)
-    const filtered: CriticalPoint[] = []
-    const threshold = stepX * 0.8
-    
-    for (const p of foundPoints) {
-      let isDuplicate = false
-      for (const f of filtered) {
-        if (Math.abs(p.x - f.x) < threshold && Math.abs(p.y - f.y) < threshold) {
-          isDuplicate = true
-          break
+      console.log(`🔍 Puntos analizados: ${totalPoints}`)
+      console.log(`🎯 Puntos críticos encontrados: ${foundPoints.length}`)
+
+      // Filtrar puntos duplicados (cercanos)
+      const filtered: CriticalPoint[] = []
+      const threshold = stepX * 0.8
+      
+      for (const p of foundPoints) {
+        let isDuplicate = false
+        for (const f of filtered) {
+          if (Math.abs(p.x - f.x) < threshold && Math.abs(p.y - f.y) < threshold) {
+            isDuplicate = true
+            break
+          }
+        }
+        if (!isDuplicate) {
+          filtered.push(p)
         }
       }
-      if (!isDuplicate) {
-        filtered.push(p)
-      }
+
+      // Ordenar por tipo (max, saddle, min)
+      filtered.sort((a, b) => {
+        const order: Record<string, number> = { max: 0, saddle: 1, min: 2 }
+        return order[a.type] - order[b.type]
+      })
+
+      setPoints(filtered)
+      console.log(`✅ Análisis completado: ${filtered.length} puntos únicos`)
+      
+    } catch (err) {
+      console.error('❌ Error en el análisis:', err)
+      setError(err instanceof Error ? err.message : 'Error al analizar la función')
+    } finally {
+      setIsAnalyzing(false)
     }
-
-    // 🔥 CORREGIDO: Ordenar por tipo (max, saddle, min)
-    filtered.sort((a, b) => {
-      const order: Record<string, number> = { max: 0, saddle: 1, min: 2 }
-      return order[a.type] - order[b.type]
-    })
-
-    setPoints(filtered)
-    setIsAnalyzing(false)
   }
 
-  // 🔥 CORREGIDO: Tipos explícitos
   const getTypeIcon = (type: string) => {
     switch(type) {
       case 'max': return <ArrowUp className="size-4 text-green-400" />
@@ -125,7 +158,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
     }
   }
 
-  // 🔥 CORREGIDO: Añadido case 'saddle'
   const getTypeLabel = (type: string) => {
     switch(type) {
       case 'max': return '🔺 MÁXIMO'
@@ -135,7 +167,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
     }
   }
 
-  // 🔥 CORREGIDO: Añadido case 'saddle'
   const getTypeColor = (type: string) => {
     switch(type) {
       case 'max': return 'text-green-400 border-green-400/30 bg-green-500/10'
@@ -177,6 +208,13 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           </button>
         </div>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+          ❌ {error}
+        </div>
+      )}
 
       {/* Resolución */}
       <div className="space-y-1">
@@ -243,7 +281,7 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       </AnimatePresence>
 
       {/* Mensaje vacío */}
-      {points.length === 0 && !isAnalyzing && (
+      {points.length === 0 && !isAnalyzing && !error && (
         <div className="text-center py-6 text-sm text-muted-foreground">
           <Sparkles className="size-8 mx-auto mb-2 text-cyan-400/50" />
           <p>Haz clic en "Analizar" para encontrar</p>
