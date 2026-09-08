@@ -1,26 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase/client'
+import { generateFighterQuestion } from '@/lib/fighter-questions'
+import type { MathFunction } from '@/lib/types'
 import {
   Swords,
-  Shield,
-  Zap,
   Crown,
   Medal,
   Timer,
   Target,
-  Users,
   Plus,
-  LogIn,
-  X,
-  Check,
-  AlertCircle,
-  Sparkles,
-  Flame,
-  Heart,
-  Skull,
   Award,
   RefreshCw,
 } from 'lucide-react'
@@ -37,12 +28,14 @@ interface Fighter {
 interface Match {
   id: string
   player1_id: string
-  player2_id: string
+  player2_id: string | null
   player1_hp: number
   player2_hp: number
   status: 'waiting' | 'fighting' | 'finished'
   winner_id: string | null
   current_round: number
+  function_expression: string
+  function_domain: { xMin: number; xMax: number; yMin: number; yMax: number }
 }
 
 interface Move {
@@ -51,26 +44,23 @@ interface Move {
   player_id: string
   type: 'correct' | 'wrong' | 'timeout'
   damage: number
-  timestamp: string
+  created_at: string
 }
 
 interface MathFighterProps {
-  currentFunction: string
+  currentFunction: MathFunction
   onWin?: () => void
 }
 
 const COLORS = ['#00f0ff', '#7c3aed', '#ec4899', '#fbbf24', '#10b981', '#fb7185']
-const DAMAGE_CORRECT = 15
-const DAMAGE_WRONG = 5
+const ROUND_SECONDS = 15
 
 export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
   const [fighters, setFighters] = useState<Fighter[]>([])
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null)
   const [selectedFighter, setSelectedFighter] = useState<string | null>(null)
   const [waitingForOpponent, setWaitingForOpponent] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [challenge, setChallenge] = useState<{ question: string; answer: string } | null>(null)
-  const [timeLeft, setTimeLeft] = useState(15)
+  const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS)
   const [moveHistory, setMoveHistory] = useState<Move[]>([])
   const [showCreateFighter, setShowCreateFighter] = useState(false)
   const [newFighterName, setNewFighterName] = useState('')
@@ -78,35 +68,50 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
   const [gameMessage, setGameMessage] = useState('')
   const [showResult, setShowResult] = useState(false)
   const [winner, setWinner] = useState<Fighter | null>(null)
+  const [answeredThisRound, setAnsweredThisRound] = useState(false)
+  const [pickedIndex, setPickedIndex] = useState<number | null>(null)
 
-  const challengeTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const currentMatchRef = useRef<Match | null>(null)
+  const answeredRef = useRef(false)
+  currentMatchRef.current = currentMatch
 
-  // Cargar luchadores
+  const isPlaying = currentMatch?.status === 'fighting'
+
+  // La pregunta se calcula localmente a partir de match.id + ronda actual:
+  // ambos celulares llegan al MISMO resultado sin escribirlo en la base de datos.
+  const question = useMemo(() => {
+    if (!currentMatch || currentMatch.status !== 'fighting') return null
+    return generateFighterQuestion(
+      currentMatch.id,
+      currentMatch.current_round,
+      currentMatch.function_expression,
+      currentMatch.function_domain
+    )
+  }, [currentMatch?.id, currentMatch?.current_round, currentMatch?.status])
+
+  // Reiniciar estado de la ronda cada vez que cambia (nueva pregunta)
+  useEffect(() => {
+    setAnsweredThisRound(false)
+    answeredRef.current = false
+    setPickedIndex(null)
+    setTimeLeft(ROUND_SECONDS)
+  }, [currentMatch?.current_round, currentMatch?.id])
+
+  // Cargar luchadores + realtime del ranking
   useEffect(() => {
     const loadFighters = async () => {
       const { data } = await supabase
         .from('fighters')
         .select('*')
         .order('total_points', { ascending: false })
-
       if (data) setFighters(data)
     }
-
     loadFighters()
 
     const channel = supabase
       .channel('fighters_channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'fighters' },
-        async () => {
-          const { data } = await supabase
-            .from('fighters')
-            .select('*')
-            .order('total_points', { ascending: false })
-          if (data) setFighters(data)
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fighters' }, loadFighters)
       .subscribe()
 
     return () => {
@@ -114,64 +119,61 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     }
   }, [])
 
-  // Suscripción a partidas activas
+  // Suscripción a la partida activa: esto es lo que sincroniza a los dos jugadores
   useEffect(() => {
     if (!selectedFighter) return
 
     const channel = supabase
-      .channel('matches_channel')
+      .channel(`match_channel_${selectedFighter}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'matches' },
-        async (payload) => {
+        (payload) => {
           const match = payload.new as Match
           if (match.player1_id === selectedFighter || match.player2_id === selectedFighter) {
             setCurrentMatch(match)
-            setIsPlaying(true)
             setWaitingForOpponent(false)
-            startChallenge()
           }
         }
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'matches' },
-        async (payload) => {
+        (payload) => {
           const match = payload.new as Match
-          if (match.id === currentMatch?.id) {
-            setCurrentMatch(match)
-            if (match.status === 'finished') {
-              const winnerFighter = fighters.find(f => f.id === match.winner_id)
-              setWinner(winnerFighter || null)
-              setShowResult(true)
-              setIsPlaying(false)
-              if (match.winner_id === selectedFighter && onWin) {
-                onWin()
-              }
-            }
+          if (match.id !== currentMatchRef.current?.id) return
+
+          setCurrentMatch(match)
+
+          if (match.status === 'finished' && match.winner_id) {
+            setFighters((prev) => {
+              const winnerFighter = prev.find((f) => f.id === match.winner_id) || null
+              setWinner(winnerFighter)
+              return prev
+            })
+            setShowResult(true)
+            if (match.winner_id === selectedFighter && onWin) onWin()
           }
         }
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'moves' },
-        async (payload) => {
+        (payload) => {
           const move = payload.new as Move
-          if (move.match_id === currentMatch?.id) {
-            setMoveHistory(prev => [...prev, move])
-            
-            const fighter = fighters.find(f => f.id === move.player_id)
-            if (fighter) {
-              setGameMessage(
-                move.type === 'correct'
-                  ? `🥊 ¡${fighter.name} dio un golpe! (-${move.damage} HP)`
-                  : move.type === 'wrong'
-                  ? `💥 ¡${fighter.name} se lastimó! (-${move.damage} HP)`
-                  : `⏰ ¡Tiempo agotado!`
-              )
-              setTimeout(() => setGameMessage(''), 2000)
-            }
-          }
+          if (move.match_id !== currentMatchRef.current?.id) return
+          setMoveHistory((prev) => [...prev, move])
+          setFighters((prev) => {
+            const fighter = prev.find((f) => f.id === move.player_id)
+            const label = fighter?.name || 'Jugador'
+            setGameMessage(
+              move.type === 'correct'
+                ? `🥊 ¡${label} acertó y golpea! (-${move.damage} HP)`
+                : `💥 ¡${label} falló y se lastima! (-${move.damage} HP)`
+            )
+            setTimeout(() => setGameMessage(''), 2000)
+            return prev
+          })
         }
       )
       .subscribe()
@@ -179,20 +181,21 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [selectedFighter, currentMatch, fighters, onWin])
+  }, [selectedFighter, onWin])
 
-  // Temporizador de desafío
+  // Temporizador de la ronda: si nadie respondió a tiempo, el que se quedó
+  // callado recibe un golpe leve (mismo RPC atómico, con p_correct=false).
   useEffect(() => {
-    if (!isPlaying || !challenge) return
+    if (!isPlaying || !question) return
 
-    setTimeLeft(15)
-    if (challengeTimerRef.current) clearInterval(challengeTimerRef.current)
-
-    challengeTimerRef.current = setInterval(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          clearInterval(challengeTimerRef.current!)
-          handleTimeout()
+          clearInterval(timerRef.current!)
+          if (!answeredRef.current) {
+            handleAnswer(-1)
+          }
           return 0
         }
         return prev - 1
@@ -200,209 +203,49 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     }, 1000)
 
     return () => {
-      if (challengeTimerRef.current) clearInterval(challengeTimerRef.current)
+      if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [challenge, isPlaying])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, question])
 
-  // Generar desafío aleatorio
-  const startChallenge = () => {
-    const types = [
-      { type: 'critical_point', label: 'Encuentra el punto crítico' },
-      { type: 'domain', label: '¿Cuál es el dominio?' },
-      { type: 'range', label: '¿Cuál es el rango?' },
-      { type: 'derivative_x', label: '¿Cuál es ∂f/∂x?' },
-      { type: 'derivative_y', label: '¿Cuál es ∂f/∂y?' },
-      { type: 'hessian', label: '¿Cuál es el determinante Hessiano?' },
-    ]
+  // Enviar respuesta: la corrección se valida contra la pregunta calculada
+  // localmente, y el golpe se aplica en el servidor de forma atómica.
+  const handleAnswer = async (optionIndex: number) => {
+    if (!currentMatch || !selectedFighter || !question) return
+    if (answeredRef.current) return
+    answeredRef.current = true
+    setAnsweredThisRound(true)
+    setPickedIndex(optionIndex)
 
-    const selected = types[Math.floor(Math.random() * types.length)]
-    let question = ''
-    let answer = ''
+    const correct = optionIndex === question.correctIndex
 
-    switch (selected.type) {
-      case 'critical_point':
-        const pointTypes = ['máximo', 'mínimo', 'punto de silla']
-        const pointType = pointTypes[Math.floor(Math.random() * pointTypes.length)]
-        question = `🎯 Encuentra el ${pointType} en la superficie`
-        answer = pointType
-        break
-      case 'domain':
-        question = `📐 ¿Cuál es el dominio de esta función?`
-        answer = 'dominio'
-        break
-      case 'range':
-        question = `📊 ¿Cuál es el rango de esta función?`
-        answer = 'rango'
-        break
-      case 'derivative_x':
-        question = `📈 ¿Cuál es la derivada parcial con respecto a x?`
-        answer = 'derivada x'
-        break
-      case 'derivative_y':
-        question = `📈 ¿Cuál es la derivada parcial con respecto a y?`
-        answer = 'derivada y'
-        break
-      case 'hessian':
-        question = `🧮 ¿Cuál es el determinante Hessiano?`
-        answer = 'hessiano'
-        break
-    }
-
-    setChallenge({ question, answer })
-  }
-
-  // Manejar respuesta correcta
-  const handleCorrect = async () => {
-    if (!currentMatch || !selectedFighter) return
-
-    const isPlayer1 = currentMatch.player1_id === selectedFighter
-    const targetHp = isPlayer1 ? 'player2_hp' : 'player1_hp'
-    const newHp = Math.max(0, (currentMatch[targetHp as keyof Match] as number) - DAMAGE_CORRECT)
-
-    await supabase.from('moves').insert({
-      match_id: currentMatch.id,
-      player_id: selectedFighter,
-      type: 'correct',
-      damage: DAMAGE_CORRECT,
+    await supabase.rpc('fighter_submit_answer', {
+      p_match_id: currentMatch.id,
+      p_player_id: selectedFighter,
+      p_round: currentMatch.current_round,
+      p_correct: correct,
     })
-
-    await supabase
-      .from('matches')
-      .update({ [targetHp]: newHp })
-      .eq('id', currentMatch.id)
-
-    if (newHp === 0) {
-      await supabase
-        .from('matches')
-        .update({
-          status: 'finished',
-          winner_id: selectedFighter,
-        })
-        .eq('id', currentMatch.id)
-
-      await supabase.rpc('update_fighter_stats', {
-        fighter_id: selectedFighter,
-        won: true,
-      })
-
-      if (onWin) onWin()
-    }
-
-    setTimeout(() => startChallenge(), 500)
   }
 
-  // Manejar respuesta incorrecta
-  const handleWrong = async () => {
-    if (!currentMatch || !selectedFighter) return
-
-    const isPlayer1 = currentMatch.player1_id === selectedFighter
-    const currentHp = isPlayer1 ? 'player1_hp' : 'player2_hp'
-    const newHp = Math.max(0, (currentMatch[currentHp as keyof Match] as number) - DAMAGE_WRONG)
-
-    await supabase.from('moves').insert({
-      match_id: currentMatch.id,
-      player_id: selectedFighter,
-      type: 'wrong',
-      damage: DAMAGE_WRONG,
-    })
-
-    await supabase
-      .from('matches')
-      .update({ [currentHp]: newHp })
-      .eq('id', currentMatch.id)
-
-    if (newHp === 0) {
-      const winnerId = isPlayer1 ? currentMatch.player2_id : currentMatch.player1_id
-      await supabase
-        .from('matches')
-        .update({
-          status: 'finished',
-          winner_id: winnerId,
-        })
-        .eq('id', currentMatch.id)
-
-      await supabase.rpc('update_fighter_stats', {
-        fighter_id: winnerId,
-        won: true,
-      })
-
-      if (winnerId === selectedFighter && onWin) onWin()
-    }
-
-    setTimeout(() => startChallenge(), 500)
-  }
-
-  // Manejar tiempo agotado
-  const handleTimeout = async () => {
-    if (!currentMatch) return
-
-    await supabase.from('moves').insert({
-      match_id: currentMatch.id,
-      player_id: selectedFighter,
-      type: 'timeout',
-      damage: 0,
-    })
-
-    const newHp1 = Math.max(0, currentMatch.player1_hp - 2)
-    const newHp2 = Math.max(0, currentMatch.player2_hp - 2)
-
-    await supabase
-      .from('matches')
-      .update({
-        player1_hp: newHp1,
-        player2_hp: newHp2,
-      })
-      .eq('id', currentMatch.id)
-
-    if (newHp1 === 0) {
-      await supabase
-        .from('matches')
-        .update({
-          status: 'finished',
-          winner_id: currentMatch.player2_id,
-        })
-        .eq('id', currentMatch.id)
-      
-      if (currentMatch.player2_id === selectedFighter && onWin) onWin()
-    } else if (newHp2 === 0) {
-      await supabase
-        .from('matches')
-        .update({
-          status: 'finished',
-          winner_id: currentMatch.player1_id,
-        })
-        .eq('id', currentMatch.id)
-      
-      if (currentMatch.player1_id === selectedFighter && onWin) onWin()
-    }
-
-    setTimeout(() => startChallenge(), 500)
-  }
-
-  // Crear luchador
   const createFighter = async () => {
     if (!newFighterName.trim()) return
-
     const { data, error } = await supabase
       .from('fighters')
-      .insert({
-        name: newFighterName,
-        color: newFighterColor,
-      })
+      .insert({ name: newFighterName, color: newFighterColor })
       .select()
 
     if (!error && data) {
-      setFighters([...fighters, data[0]])
+      setFighters((prev) => [...prev, data[0]])
       setSelectedFighter(data[0].id)
       setNewFighterName('')
       setShowCreateFighter(false)
     }
   }
 
-  // Buscar partida
+  // Buscar partida: la función/dominio activos quedan "congelados" en el
+  // match para que los dos jugadores peleen sobre la misma superficie.
   const findMatch = async () => {
     if (!selectedFighter) return
-
     setWaitingForOpponent(true)
 
     const { data: waitingMatch } = await supabase
@@ -413,65 +256,56 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
       .limit(1)
 
     if (waitingMatch && waitingMatch.length > 0) {
-      await supabase
+      const { data: updated } = await supabase
         .from('matches')
-        .update({
-          player2_id: selectedFighter,
-          status: 'fighting',
-        })
+        .update({ player2_id: selectedFighter, status: 'fighting' })
         .eq('id', waitingMatch[0].id)
+        .select()
 
-      setCurrentMatch(waitingMatch[0])
-      setIsPlaying(true)
+      if (updated && updated[0]) {
+        setCurrentMatch(updated[0])
+      }
       setWaitingForOpponent(false)
-      startChallenge()
     } else {
       const { data: newMatch } = await supabase
         .from('matches')
         .insert({
           player1_id: selectedFighter,
           status: 'waiting',
+          function_expression: currentFunction.expression,
+          function_domain: currentFunction.domain,
         })
         .select()
 
-      if (newMatch) {
-        setCurrentMatch(newMatch[0])
-      }
+      if (newMatch) setCurrentMatch(newMatch[0])
     }
   }
 
-  // Reiniciar partida
   const resetMatch = async () => {
-    if (!currentMatch) return
-
-    await supabase
-      .from('matches')
-      .delete()
-      .eq('id', currentMatch.id)
-
+    if (currentMatch) {
+      await supabase.from('matches').delete().eq('id', currentMatch.id)
+    }
     setCurrentMatch(null)
-    setIsPlaying(false)
+    setWaitingForOpponent(false)
     setShowResult(false)
     setWinner(null)
     setMoveHistory([])
-    setChallenge(null)
   }
 
-  const renderHealthBar = (hp: number, maxHp: number = 100) => {
+  const renderHealthBar = (hp: number, maxHp = 100) => {
     const percentage = (hp / maxHp) * 100
     const color = percentage > 60 ? 'bg-green-500' : percentage > 30 ? 'bg-yellow-500' : 'bg-red-500'
-    
     return (
       <div className="w-full h-4 bg-black/30 rounded-full overflow-hidden">
-        <div
-          className={`h-full transition-all duration-300 ${color}`}
-          style={{ width: `${percentage}%` }}
-        />
+        <div className={`h-full transition-all duration-300 ${color}`} style={{ width: `${percentage}%` }} />
       </div>
     )
   }
 
   const sortedFighters = [...fighters].sort((a, b) => b.total_points - a.total_points)
+  const me = fighters.find((f) => f.id === selectedFighter)
+  const p1 = fighters.find((f) => f.id === currentMatch?.player1_id)
+  const p2 = fighters.find((f) => f.id === currentMatch?.player2_id)
 
   return (
     <motion.div
@@ -484,13 +318,7 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
           <Swords className="size-6 text-yellow-400" />
           <h2 className="text-xl font-bold text-foreground">⚔️ MATH FIGHTER</h2>
         </div>
-        <div className="flex items-center gap-2">
-          {isPlaying && (
-            <span className="text-xs text-cyan-400 animate-pulse">
-              ⚔️ En combate
-            </span>
-          )}
-        </div>
+        {isPlaying && <span className="text-xs text-cyan-400 animate-pulse">⚔️ En combate</span>}
       </div>
 
       {!selectedFighter ? (
@@ -510,14 +338,9 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
                   whileTap={{ scale: 0.98 }}
                 >
                   <div className="flex items-center gap-3">
-                    <div
-                      className="size-4 rounded-full"
-                      style={{ backgroundColor: fighter.color }}
-                    />
+                    <div className="size-4 rounded-full" style={{ backgroundColor: fighter.color }} />
                     <span className="font-medium text-foreground">{fighter.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      🏆 {fighter.total_points} pts
-                    </span>
+                    <span className="text-xs text-muted-foreground">🏆 {fighter.total_points} pts</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-green-400">✅ {fighter.wins}</span>
@@ -552,9 +375,7 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
                     key={color}
                     onClick={() => setNewFighterColor(color)}
                     className={`size-8 rounded-full border-2 transition-all ${
-                      newFighterColor === color
-                        ? 'border-white scale-110'
-                        : 'border-transparent'
+                      newFighterColor === color ? 'border-white scale-110' : 'border-transparent'
                     }`}
                     style={{ backgroundColor: color }}
                   />
@@ -581,16 +402,9 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
         <div className="space-y-4">
           <div className="glass-light rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div
-                className="size-4 rounded-full"
-                style={{ backgroundColor: fighters.find(f => f.id === selectedFighter)?.color }}
-              />
-              <span className="font-medium text-foreground">
-                {fighters.find(f => f.id === selectedFighter)?.name}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                🏆 {fighters.find(f => f.id === selectedFighter)?.total_points || 0} pts
-              </span>
+              <div className="size-4 rounded-full" style={{ backgroundColor: me?.color }} />
+              <span className="font-medium text-foreground">{me?.name}</span>
+              <span className="text-xs text-muted-foreground">🏆 {me?.total_points || 0} pts</span>
             </div>
             <button
               onClick={() => setSelectedFighter(null)}
@@ -642,20 +456,11 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
           <div className="grid grid-cols-3 gap-4 items-center">
             <div className="text-center">
               <div className="flex items-center justify-center gap-2">
-                <div
-                  className="size-3 rounded-full"
-                  style={{ backgroundColor: fighters.find(f => f.id === currentMatch?.player1_id)?.color }}
-                />
-                <span className="font-bold text-sm text-foreground">
-                  {fighters.find(f => f.id === currentMatch?.player1_id)?.name || '?'}
-                </span>
+                <div className="size-3 rounded-full" style={{ backgroundColor: p1?.color }} />
+                <span className="font-bold text-sm text-foreground">{p1?.name || '?'}</span>
               </div>
-              <div className="mt-2">
-                {renderHealthBar(currentMatch?.player1_hp || 100)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                ❤️ {currentMatch?.player1_hp || 100} HP
-              </div>
+              <div className="mt-2">{renderHealthBar(currentMatch?.player1_hp ?? 100)}</div>
+              <div className="text-xs text-muted-foreground mt-1">❤️ {currentMatch?.player1_hp ?? 100} HP</div>
             </div>
 
             <div className="text-center">
@@ -665,52 +470,56 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
 
             <div className="text-center">
               <div className="flex items-center justify-center gap-2">
-                <span className="font-bold text-sm text-foreground">
-                  {fighters.find(f => f.id === currentMatch?.player2_id)?.name || '?'}
-                </span>
-                <div
-                  className="size-3 rounded-full"
-                  style={{ backgroundColor: fighters.find(f => f.id === currentMatch?.player2_id)?.color }}
-                />
+                <span className="font-bold text-sm text-foreground">{p2?.name || '?'}</span>
+                <div className="size-3 rounded-full" style={{ backgroundColor: p2?.color }} />
               </div>
-              <div className="mt-2">
-                {renderHealthBar(currentMatch?.player2_hp || 100)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                ❤️ {currentMatch?.player2_hp || 100} HP
-              </div>
+              <div className="mt-2">{renderHealthBar(currentMatch?.player2_hp ?? 100)}</div>
+              <div className="text-xs text-muted-foreground mt-1">❤️ {currentMatch?.player2_hp ?? 100} HP</div>
             </div>
           </div>
 
-          {challenge && currentMatch && (
+          {question && (
             <div className="glass-light rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-cyan-400">🎯 Desafío</span>
+                <span className="text-xs text-cyan-400">🎯 Ronda {(currentMatch?.current_round ?? 0) + 1}</span>
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <Timer size={12} />
                   {timeLeft}s
                 </span>
               </div>
-              <p className="text-sm text-foreground text-center font-medium">
-                {challenge.question}
-              </p>
-              <p className="text-xs text-muted-foreground text-center">
-                Función: {currentFunction}
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={handleCorrect}
-                  className="flex-1 py-2 bg-green-500/20 border border-green-500/50 text-green-400 rounded-lg hover:bg-green-500/30 transition-all font-bold text-sm"
-                >
-                  ✅ Correcto
-                </button>
-                <button
-                  onClick={handleWrong}
-                  className="flex-1 py-2 bg-red-500/20 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/30 transition-all font-bold text-sm"
-                >
-                  ❌ Incorrecto
-                </button>
+              <p className="text-sm text-foreground text-center font-medium">{question.prompt}</p>
+
+              <div className="grid grid-cols-1 gap-2">
+                {question.options.map((opt, i) => {
+                  const isPicked = pickedIndex === i
+                  const revealCorrect = answeredThisRound && i === question.correctIndex
+                  const revealWrong = answeredThisRound && isPicked && i !== question.correctIndex
+                  return (
+                    <button
+                      key={i}
+                      disabled={answeredThisRound}
+                      onClick={() => handleAnswer(i)}
+                      className={`w-full py-2 px-3 rounded-lg text-sm font-medium text-left transition-all border ${
+                        revealCorrect
+                          ? 'bg-green-500/20 border-green-500/50 text-green-400'
+                          : revealWrong
+                          ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                          : answeredThisRound
+                          ? 'bg-white/5 border-white/10 text-muted-foreground'
+                          : 'bg-black/30 border-cyan-400/20 text-foreground hover:border-cyan-400/60 hover:bg-white/5'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  )
+                })}
               </div>
+
+              {answeredThisRound && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {question.detail} · esperando el resultado de la ronda...
+                </p>
+              )}
             </div>
           )}
 
@@ -729,16 +538,12 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
               <div className="flex items-center gap-2 flex-wrap">
                 {moveHistory.slice(-5).map((move, i) => (
                   <span
-                    key={i}
+                    key={move.id || i}
                     className={`text-xs px-2 py-1 rounded ${
-                      move.type === 'correct'
-                        ? 'bg-green-500/20 text-green-400'
-                        : move.type === 'wrong'
-                        ? 'bg-red-500/20 text-red-400'
-                        : 'bg-yellow-500/20 text-yellow-400'
+                      move.type === 'correct' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                     }`}
                   >
-                    {move.type === 'correct' ? '🥊' : move.type === 'wrong' ? '💥' : '⏰'}
+                    {move.type === 'correct' ? '🥊' : '💥'}
                     {move.damage > 0 && ` -${move.damage}`}
                   </span>
                 ))}
@@ -768,10 +573,7 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
           >
             <Crown className="size-16 text-yellow-400 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-foreground">🏆 ¡{winner.name} GANA!</h2>
-            <div
-              className="size-12 rounded-full mx-auto my-4"
-              style={{ backgroundColor: winner.color }}
-            />
+            <div className="size-12 rounded-full mx-auto my-4" style={{ backgroundColor: winner.color }} />
             <p className="text-sm text-muted-foreground">
               ¡Excelente combate! {winner.name} demostró su dominio matemático.
             </p>
@@ -805,19 +607,18 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
           </h3>
           <div className="space-y-1">
             {sortedFighters.slice(0, 5).map((fighter, index) => (
-              <div
-                key={fighter.id}
-                className="flex items-center justify-between text-xs p-2 rounded-lg glass"
-              >
+              <div key={fighter.id} className="flex items-center justify-between text-xs p-2 rounded-lg glass">
                 <div className="flex items-center gap-2">
-                  {index === 0 ? <Crown size={14} className="text-yellow-400" /> :
-                   index === 1 ? <Medal size={14} className="text-slate-400" /> :
-                   index === 2 ? <Medal size={14} className="text-amber-600" /> :
-                   <span className="w-4 text-center text-muted-foreground">{index + 1}</span>}
-                  <div
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: fighter.color }}
-                  />
+                  {index === 0 ? (
+                    <Crown size={14} className="text-yellow-400" />
+                  ) : index === 1 ? (
+                    <Medal size={14} className="text-slate-400" />
+                  ) : index === 2 ? (
+                    <Medal size={14} className="text-amber-600" />
+                  ) : (
+                    <span className="w-4 text-center text-muted-foreground">{index + 1}</span>
+                  )}
+                  <div className="size-2 rounded-full" style={{ backgroundColor: fighter.color }} />
                   <span>{fighter.name}</span>
                 </div>
                 <div className="flex items-center gap-2">

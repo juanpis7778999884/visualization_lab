@@ -413,7 +413,7 @@ export default function Page() {
                   {/* ⚔️ MATH FIGHTER - 1vs1 */}
                   {showFighter && (
                     <MathFighter 
-                      currentFunction={currentFunction.expression} 
+                      currentFunction={currentFunction} 
                       onWin={handleFighterWin}
                     />
                   )}
