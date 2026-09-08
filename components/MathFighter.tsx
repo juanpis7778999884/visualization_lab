@@ -54,7 +54,6 @@ interface Move {
   timestamp: string
 }
 
-// 🔥 INTERFAZ CORREGIDA - AÑADIDA onWin
 interface MathFighterProps {
   currentFunction: string
   onWin?: () => void
@@ -146,7 +145,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
               setWinner(winnerFighter || null)
               setShowResult(true)
               setIsPlaying(false)
-              // 🔥 LLAMAR A onWin CUANDO ALGUIEN GANA
               if (match.winner_id === selectedFighter && onWin) {
                 onWin()
               }
@@ -495,7 +493,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
         </div>
       </div>
 
-      {/* Selección de luchador */}
       {!selectedFighter ? (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground text-center">
@@ -641,11 +638,8 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
           )}
         </div>
       ) : (
-        // 🥊 ARENA DE COMBATE
         <div className="space-y-4">
-          {/* VS Cabecera */}
           <div className="grid grid-cols-3 gap-4 items-center">
-            {/* Jugador 1 */}
             <div className="text-center">
               <div className="flex items-center justify-center gap-2">
                 <div
@@ -664,13 +658,11 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
               </div>
             </div>
 
-            {/* VS */}
             <div className="text-center">
               <Swords className="size-8 text-yellow-400 mx-auto animate-pulse" />
               <div className="text-xs text-muted-foreground mt-1">⚔️ VS</div>
             </div>
 
-            {/* Jugador 2 */}
             <div className="text-center">
               <div className="flex items-center justify-center gap-2">
                 <span className="font-bold text-sm text-foreground">
@@ -690,7 +682,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
             </div>
           </div>
 
-          {/* Desafío */}
           {challenge && currentMatch && (
             <div className="glass-light rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -723,7 +714,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
             </div>
           )}
 
-          {/* Mensaje de juego */}
           {gameMessage && (
             <motion.div
               className="text-center text-sm font-bold text-yellow-400"
@@ -734,7 +724,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
             </motion.div>
           )}
 
-          {/* Historial de movimientos */}
           {moveHistory.length > 0 && (
             <div className="glass-light rounded-lg p-3 max-h-20 overflow-y-auto">
               <div className="flex items-center gap-2 flex-wrap">
@@ -757,7 +746,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
             </div>
           )}
 
-          {/* Botón de rendición */}
           <button
             onClick={resetMatch}
             className="w-full py-2 text-xs text-muted-foreground hover:text-red-400 transition-colors"
@@ -767,7 +755,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
         </div>
       )}
 
-      {/* Resultado final */}
       {showResult && winner && (
         <motion.div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
@@ -810,7 +797,6 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
         </motion.div>
       )}
 
-      {/* Ranking */}
       {sortedFighters.length > 0 && (
         <div className="space-y-2 border-t border-white/10 pt-4">
           <h3 className="text-sm font-bold text-cyan-400 flex items-center gap-2">
