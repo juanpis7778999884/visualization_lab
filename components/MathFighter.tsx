@@ -9,7 +9,6 @@ import {
   Swords,
   Crown,
   Medal,
-  Timer,
   Target,
   Plus,
   Award,
@@ -53,14 +52,14 @@ interface MathFighterProps {
 }
 
 const COLORS = ['#00f0ff', '#7c3aed', '#ec4899', '#fbbf24', '#10b981', '#fb7185']
-const ROUND_SECONDS = 15
+// Cuánto dura visible el feedback de "fallaste" antes de dejarte reintentar.
+const WRONG_ANSWER_RETRY_DELAY_MS = 1200
 
 export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
   const [fighters, setFighters] = useState<Fighter[]>([])
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null)
   const [selectedFighter, setSelectedFighter] = useState<string | null>(null)
   const [waitingForOpponent, setWaitingForOpponent] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS)
   const [moveHistory, setMoveHistory] = useState<Move[]>([])
   const [showCreateFighter, setShowCreateFighter] = useState(false)
   const [newFighterName, setNewFighterName] = useState('')
@@ -70,8 +69,9 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
   const [winner, setWinner] = useState<Fighter | null>(null)
   const [answeredThisRound, setAnsweredThisRound] = useState(false)
   const [pickedIndex, setPickedIndex] = useState<number | null>(null)
+  const [lastWasWrong, setLastWasWrong] = useState(false)
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null)
   const currentMatchRef = useRef<Match | null>(null)
   const answeredRef = useRef(false)
   currentMatchRef.current = currentMatch
@@ -80,6 +80,9 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
 
   // La pregunta se calcula localmente a partir de match.id + ronda actual:
   // ambos celulares llegan al MISMO resultado sin escribirlo en la base de datos.
+  // Como ahora la ronda solo cambia cuando alguien ACIERTA, esta misma pregunta
+  // se mantiene visible para ambos jugadores mientras nadie la resuelva bien,
+  // sin importar cuántos minutos tarden.
   const question = useMemo(() => {
     if (!currentMatch || currentMatch.status !== 'fighting') return null
     return generateFighterQuestion(
@@ -90,12 +93,14 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     )
   }, [currentMatch?.id, currentMatch?.current_round, currentMatch?.status])
 
-  // Reiniciar estado de la ronda cada vez que cambia (nueva pregunta)
+  // Reiniciar estado de la ronda cada vez que cambia (nueva pregunta,
+  // es decir: alguien acertó y se pasó de ronda).
   useEffect(() => {
     setAnsweredThisRound(false)
     answeredRef.current = false
     setPickedIndex(null)
-    setTimeLeft(ROUND_SECONDS)
+    setLastWasWrong(false)
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
   }, [currentMatch?.current_round, currentMatch?.id])
 
   // Cargar luchadores + realtime del ranking
@@ -183,33 +188,21 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     }
   }, [selectedFighter, onWin])
 
-  // Temporizador de la ronda: si nadie respondió a tiempo, el que se quedó
-  // callado recibe un golpe leve (mismo RPC atómico, con p_correct=false).
+  // Limpiar el timer de reintento si el componente se desmonta.
   useEffect(() => {
-    if (!isPlaying || !question) return
-
-    if (timerRef.current) clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current!)
-          if (!answeredRef.current) {
-            handleAnswer(-1)
-          }
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, question])
+  }, [])
 
   // Enviar respuesta: la corrección se valida contra la pregunta calculada
   // localmente, y el golpe se aplica en el servidor de forma atómica.
+  //
+  // Ya no hay límite de tiempo. Si fallas, ves brevemente el error y
+  // puedes volver a intentar la MISMA pregunta (te llevas el golpe de
+  // penalización cada vez que fallas). La ronda solo avanza cuando
+  // alguno de los dos acierta primero — el RPC del servidor es quien
+  // decide eso de forma atómica, así que no importa la latencia de red.
   const handleAnswer = async (optionIndex: number) => {
     if (!currentMatch || !selectedFighter || !question) return
     if (answeredRef.current) return
@@ -218,6 +211,7 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     setPickedIndex(optionIndex)
 
     const correct = optionIndex === question.correctIndex
+    setLastWasWrong(!correct)
 
     await supabase.rpc('fighter_submit_answer', {
       p_match_id: currentMatch.id,
@@ -225,6 +219,18 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
       p_round: currentMatch.current_round,
       p_correct: correct,
     })
+
+    if (!correct) {
+      // Si acertaste, current_round cambia por realtime y el useEffect de
+      // arriba resetea todo solo. Si fallaste, la ronda sigue igual, así
+      // que hay que volver a habilitar las opciones manualmente.
+      retryTimerRef.current = setTimeout(() => {
+        answeredRef.current = false
+        setAnsweredThisRound(false)
+        setPickedIndex(null)
+        setLastWasWrong(false)
+      }, WRONG_ANSWER_RETRY_DELAY_MS)
+    }
   }
 
   const createFighter = async () => {
@@ -281,8 +287,12 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     }
   }
 
+  // "Reiniciar" (fuera de combate): solo limpia partidas en 'waiting' que
+  // nadie más se unió a jugar todavía, así que no hay historial que perder
+  // y sí es seguro un DELETE real aquí. Una partida ya 'finished' NO se
+  // borra (se conserva el historial); solo se limpia del estado local.
   const resetMatch = async () => {
-    if (currentMatch) {
+    if (currentMatch && currentMatch.status === 'waiting') {
       await supabase.from('matches').delete().eq('id', currentMatch.id)
     }
     setCurrentMatch(null)
@@ -290,6 +300,20 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
     setShowResult(false)
     setWinner(null)
     setMoveHistory([])
+  }
+
+  // "Rendirse" (en pleno combate): ya NO borra la partida (eso era lo que
+  // daba 409 y además perdía el historial de golpes). En vez de eso llama
+  // al RPC fighter_give_up, que declara ganador al oponente y actualiza
+  // las estadísticas de ambos luchadores de forma atómica.
+  const giveUp = async () => {
+    if (!currentMatch || !selectedFighter) return
+    await supabase.rpc('fighter_give_up', {
+      p_match_id: currentMatch.id,
+      p_player_id: selectedFighter,
+    })
+    // No hace falta actualizar estado local a mano: el UPDATE de `matches`
+    // llega por realtime (arriba) y dispara el modal de resultado solo.
   }
 
   const renderHealthBar = (hp: number, maxHp = 100) => {
@@ -482,9 +506,8 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
             <div className="glass-light rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-cyan-400">🎯 Ronda {(currentMatch?.current_round ?? 0) + 1}</span>
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Timer size={12} />
-                  {timeLeft}s
+                <span className="text-xs text-muted-foreground">
+                  🏁 Gana el primero en acertar
                 </span>
               </div>
               <p className="text-sm text-foreground text-center font-medium">{question.prompt}</p>
@@ -492,17 +515,14 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
               <div className="grid grid-cols-1 gap-2">
                 {question.options.map((opt, i) => {
                   const isPicked = pickedIndex === i
-                  const revealCorrect = answeredThisRound && i === question.correctIndex
-                  const revealWrong = answeredThisRound && isPicked && i !== question.correctIndex
+                  const revealWrong = answeredThisRound && isPicked && lastWasWrong
                   return (
                     <button
                       key={i}
                       disabled={answeredThisRound}
                       onClick={() => handleAnswer(i)}
                       className={`w-full py-2 px-3 rounded-lg text-sm font-medium text-left transition-all border ${
-                        revealCorrect
-                          ? 'bg-green-500/20 border-green-500/50 text-green-400'
-                          : revealWrong
+                        revealWrong
                           ? 'bg-red-500/20 border-red-500/50 text-red-400'
                           : answeredThisRound
                           ? 'bg-white/5 border-white/10 text-muted-foreground'
@@ -517,7 +537,9 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
 
               {answeredThisRound && (
                 <p className="text-xs text-muted-foreground text-center">
-                  {question.detail} · esperando el resultado de la ronda...
+                  {lastWasWrong
+                    ? `${question.detail} · fallaste, puedes volver a intentar en un momento...`
+                    : `${question.detail} · esperando el resultado de la ronda...`}
                 </p>
               )}
             </div>
@@ -552,7 +574,7 @@ export function MathFighter({ currentFunction, onWin }: MathFighterProps) {
           )}
 
           <button
-            onClick={resetMatch}
+            onClick={giveUp}
             className="w-full py-2 text-xs text-muted-foreground hover:text-red-400 transition-colors"
           >
             🏳️ Rendirse
