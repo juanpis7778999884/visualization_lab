@@ -28,6 +28,7 @@ export function Header({ isPresentationMode, onPresentationModeChange, onSkipTut
         </div>
 
         <div className="flex items-center gap-3">
+          {/* 🔥 BOTÓN OMITIR TUTORIAL */}
           {onSkipTutorial && (
             <motion.button
               onClick={onSkipTutorial}
