@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Zap, SkipForward, Menu, X, Swords } from 'lucide-react'
+import { Zap, SkipForward, Menu, X, Swords, Trophy } from 'lucide-react'
 
 interface HeaderProps {
   isPresentationMode: boolean
@@ -11,6 +11,8 @@ interface HeaderProps {
   isMobileMenuOpen?: boolean
   onOpenFighter?: () => void
   isFighterOpen?: boolean
+  onOpenTournament?: () => void
+  isTournamentOpen?: boolean
 }
 
 export function Header({ 
@@ -20,7 +22,9 @@ export function Header({
   onMenuToggle,
   isMobileMenuOpen = false,
   onOpenFighter,
-  isFighterOpen = false
+  isFighterOpen = false,
+  onOpenTournament,
+  isTournamentOpen = false
 }: HeaderProps) {
   return (
     <motion.header
@@ -56,6 +60,24 @@ export function Header({
             <span className="hidden sm:inline">⚔️ Math Fighter</span>
             <span className="sm:hidden">Fighter</span>
           </motion.button>
+
+          {/* 🏆 BOTÓN TORNEO POR GRUPOS */}
+          {onOpenTournament && (
+            <motion.button
+              onClick={onOpenTournament}
+              className={`px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-sm font-medium transition-all flex items-center gap-1 md:gap-2 ${
+                isTournamentOpen
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-black shadow-lg shadow-amber-500/30'
+                  : 'glass text-amber-400 hover:bg-white/10 border border-amber-400/20'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Trophy size={16} className="md:size-[18px]" />
+              <span className="hidden sm:inline">🏆 Torneo</span>
+              <span className="sm:hidden">Torneo</span>
+            </motion.button>
+          )}
 
           {/* Menú Hamburguesa - SOLO MÓVIL */}
           {onMenuToggle && (

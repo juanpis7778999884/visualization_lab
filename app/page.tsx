@@ -30,6 +30,7 @@ import { Tutorial } from '@/components/Tutorial'
 import { MathQuiz } from '@/components/MathQuiz'
 import { CriticalPointsAnalyzer } from '@/components/CriticalPointsAnalyzer'
 import { MathFighter } from '@/components/MathFighter'
+import { TournamentArena } from '@/components/TournamentArena'
 import { DEFAULT_FUNCTION } from '@/lib/functions'
 import { calculateDomainRange, getPartialDerivativeX, getPartialDerivativeY } from '@/lib/math-utils'
 import type { MathFunction } from '@/lib/types'
@@ -72,6 +73,7 @@ export default function Page() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [showFighter, setShowFighter] = useState(false)
+  const [showTournament, setShowTournament] = useState(false)
 
   // ============================================================
   // LOGROS
@@ -258,6 +260,16 @@ export default function Page() {
   const toggleFighter = () => {
     setShowFighter(!showFighter)
     if (!showFighter) {
+      setShowTournament(false)
+      if (isMobile) setIsMobileMenuOpen(false)
+    }
+  }
+
+  // Toggle Torneo por grupos
+  const toggleTournament = () => {
+    setShowTournament(!showTournament)
+    if (!showTournament) {
+      setShowFighter(false)
       if (isMobile) setIsMobileMenuOpen(false)
     }
   }
@@ -277,6 +289,8 @@ export default function Page() {
         isMobileMenuOpen={isMobileMenuOpen}
         onOpenFighter={toggleFighter}
         isFighterOpen={showFighter}
+        onOpenTournament={toggleTournament}
+        isTournamentOpen={showTournament}
       />
 
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
@@ -402,6 +416,11 @@ export default function Page() {
                       currentFunction={currentFunction.expression} 
                       onWin={handleFighterWin}
                     />
+                  )}
+
+                  {/* 🏆 TORNEO POR GRUPOS */}
+                  {showTournament && (
+                    <TournamentArena onClose={() => setShowTournament(false)} />
                   )}
                 </div>
               </motion.aside>
