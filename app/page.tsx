@@ -12,6 +12,8 @@ import {
   Flame,
   Target,
   Trophy,
+  Menu,
+  X,
 } from 'lucide-react'
 import { Surface3D } from '@/components/Surface3D'
 import { ParticleBackground } from '@/components/ParticleBackground'
@@ -41,7 +43,7 @@ export default function Page() {
   const [contourLevel, setContourLevel] = useState(0.5)
 
   // ============================================================
-  // ESTADOS DEL JUEGO (CAZADOR DE EXTREMOS)
+  // ESTADOS DEL JUEGO
   // ============================================================
   const [gameMode, setGameMode] = useState(false)
   const [targetType, setTargetType] = useState<'max' | 'min' | 'saddle'>('max')
@@ -65,6 +67,7 @@ export default function Page() {
   const [showTutorial, setShowTutorial] = useState(true)
   const [showQuiz, setShowQuiz] = useState(false)
   const [quizScore, setQuizScore] = useState(0)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   // ============================================================
   // LOGROS
@@ -221,114 +224,158 @@ export default function Page() {
     }
   }
 
+  // Cerrar menú al hacer clic fuera
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768 && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [isMobileMenuOpen])
+
   // ============================================================
   // RENDER
   // ============================================================
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden">
       <ParticleBackground />
+      
       <Header
         isPresentationMode={isPresentationMode}
         onPresentationModeChange={setIsPresentationMode}
         onSkipTutorial={() => setShowTutorial(false)}
+        onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        isMobileMenuOpen={isMobileMenuOpen}
       />
 
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
 
       <div className="relative min-h-screen pt-20">
-        <AnimatePresence mode="wait">
+        {/* Panel lateral - Móvil: overlay deslizable */}
+        <AnimatePresence>
           {!isPresentationMode && (
-            <motion.aside
-              className="fixed left-4 top-24 bottom-4 w-80 z-30 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-cyan-400/30"
-              initial={{ opacity: 0, x: -40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.4 }}
-            >
-              <FunctionPanel
-                currentFunction={currentFunction}
-                onFunctionChange={handleFunctionChange}
-              />
-
-              <InfoPanel func={currentFunction} selectedPoint={selectedPoint} range={range} />
-
-              <LevelSlider
-                min={range.min}
-                max={range.max}
-                value={contourLevel}
-                onChange={setContourLevel}
-              />
-
-              <CriticalPointsAnalyzer
-                func={currentFunction}
-                onPointClick={handlePointClick}
-              />
-
-              <GamePanel
-                gameMode={gameMode}
-                setGameMode={setGameMode}
-                targetType={targetType}
-                setTargetType={setTargetType}
-                score={score}
-                attempts={attempts}
-              />
-
-              {gameMessage && (
+            <>
+              {/* Overlay oscuro para móvil */}
+              {isMobileMenuOpen && (
                 <motion.div
-                  className={`glass p-2 rounded-lg text-center text-sm font-bold ${
-                    gameMessage.includes('🎉') ? 'text-yellow-400 border border-yellow-400/30' : 'text-red-400'
-                  }`}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                >
-                  {gameMessage}
-                </motion.div>
+                  className="fixed inset-0 z-20 bg-black/70 backdrop-blur-sm md:hidden"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                />
               )}
 
-              <AchievementPanel achievements={achievements} />
-
-              <ExtraControls
-                earthquake={earthquake}
-                setEarthquake={setEarthquake}
-                earthquakeMagnitude={earthquakeMagnitude}
-                setEarthquakeMagnitude={setEarthquakeMagnitude}
-                drawMode={drawMode}
-                setDrawMode={setDrawMode}
-                soundEnabled={soundEnabled}
-                setSoundEnabled={setSoundEnabled}
-                timeMode={timeMode}
-                setTimeMode={setTimeMode}
-                timeValue={timeValue}
-                setTimeValue={setTimeValue}
-              />
-
-              <motion.button
-                onClick={() => setShowTutorial(true)}
-                className="w-full glass p-3 rounded-lg text-sm font-medium text-cyan-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+              <motion.aside
+                className={`
+                  fixed z-30 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-cyan-400/30
+                  transition-all duration-300 ease-in-out
+                  ${isMobileMenuOpen 
+                    ? 'left-0 right-0 top-20 bottom-0 p-4 bg-background/95 backdrop-blur-md' 
+                    : '-left-full md:left-4 md:top-24 md:bottom-4 md:w-80 md:p-0'
+                  }
+                  ${!isPresentationMode && 'md:block'}
+                `}
+                initial={{ x: -400 }}
+                animate={{ 
+                  x: isMobileMenuOpen ? 0 : (window.innerWidth < 768 ? -400 : 0),
+                }}
+                transition={{ duration: 0.3 }}
               >
-                <BookOpen size={16} />
-                📖 Tutorial Interactivo
-              </motion.button>
+                <div className="md:space-y-3 h-full overflow-y-auto pb-20 md:pb-0">
+                  <FunctionPanel
+                    currentFunction={currentFunction}
+                    onFunctionChange={handleFunctionChange}
+                  />
 
-              <motion.button
-                onClick={() => setShowQuiz(!showQuiz)}
-                className="w-full glass p-3 rounded-lg text-sm font-medium text-violet-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Brain size={16} />
-                🧠 Desafío Matemático
-              </motion.button>
+                  <InfoPanel func={currentFunction} selectedPoint={selectedPoint} range={range} />
 
-              {showQuiz && <MathQuiz onComplete={setQuizScore} />}
-            </motion.aside>
+                  <LevelSlider
+                    min={range.min}
+                    max={range.max}
+                    value={contourLevel}
+                    onChange={setContourLevel}
+                  />
+
+                  <CriticalPointsAnalyzer
+                    func={currentFunction}
+                    onPointClick={handlePointClick}
+                  />
+
+                  <GamePanel
+                    gameMode={gameMode}
+                    setGameMode={setGameMode}
+                    targetType={targetType}
+                    setTargetType={setTargetType}
+                    score={score}
+                    attempts={attempts}
+                  />
+
+                  {gameMessage && (
+                    <motion.div
+                      className={`glass p-2 rounded-lg text-center text-sm font-bold ${
+                        gameMessage.includes('🎉') ? 'text-yellow-400 border border-yellow-400/30' : 'text-red-400'
+                      }`}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                    >
+                      {gameMessage}
+                    </motion.div>
+                  )}
+
+                  <AchievementPanel achievements={achievements} />
+
+                  <ExtraControls
+                    earthquake={earthquake}
+                    setEarthquake={setEarthquake}
+                    earthquakeMagnitude={earthquakeMagnitude}
+                    setEarthquakeMagnitude={setEarthquakeMagnitude}
+                    drawMode={drawMode}
+                    setDrawMode={setDrawMode}
+                    soundEnabled={soundEnabled}
+                    setSoundEnabled={setSoundEnabled}
+                    timeMode={timeMode}
+                    setTimeMode={setTimeMode}
+                    timeValue={timeValue}
+                    setTimeValue={setTimeValue}
+                  />
+
+                  <motion.button
+                    onClick={() => setShowTutorial(true)}
+                    className="w-full glass p-3 rounded-lg text-sm font-medium text-cyan-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <BookOpen size={16} />
+                    📖 Tutorial Interactivo
+                  </motion.button>
+
+                  <motion.button
+                    onClick={() => setShowQuiz(!showQuiz)}
+                    className="w-full glass p-3 rounded-lg text-sm font-medium text-violet-400 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Brain size={16} />
+                    🧠 Desafío Matemático
+                  </motion.button>
+
+                  {showQuiz && <MathQuiz onComplete={setQuizScore} />}
+                </div>
+              </motion.aside>
+            </>
           )}
         </AnimatePresence>
 
+        {/* Contenido principal 3D */}
         <section
-          className={`${isPresentationMode ? 'w-full' : 'ml-[336px] mr-4'} h-[calc(100vh-6rem)] relative`}
+          className={`
+            h-[calc(100vh-6rem)] relative transition-all duration-300
+            ${isPresentationMode ? 'w-full' : 'w-full md:ml-[336px] md:mr-4'}
+            ${isMobileMenuOpen ? 'opacity-30' : 'opacity-100'}
+          `}
         >
           <div className="absolute inset-0 glass rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-cyan-400/10">
             <Surface3D
@@ -342,36 +389,37 @@ export default function Page() {
               timeValue={timeMode ? timeValue : 0}
             />
 
-            <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none">
-              <div className="glass-light rounded-lg px-4 py-3 pointer-events-auto">
-                <div className="flex items-center gap-2 text-xs text-cyan-400 uppercase tracking-wider font-semibold">
+            {/* Overlay superior - Responsive */}
+            <div className="absolute top-4 left-4 right-4 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+              <div className="glass-light rounded-lg px-3 py-2 md:px-4 md:py-3 pointer-events-auto text-xs md:text-sm max-w-[200px] md:max-w-none">
+                <div className="flex items-center gap-2 text-[10px] md:text-xs text-cyan-400 uppercase tracking-wider font-semibold">
                   <Sparkles size={14} />
                   Live Surface
                 </div>
-                <div className="mt-1 text-sm text-foreground font-mono">
+                <div className="mt-1 font-mono text-[10px] md:text-sm truncate">
                   z = {currentFunction.expression}
                 </div>
-                <div className="mt-1 text-xs text-muted-foreground">
+                <div className="mt-1 text-[10px] text-muted-foreground">
                   k = {contourLevel.toFixed(2)}
                 </div>
                 {gameMode && (
-                  <div className="mt-1 text-xs text-yellow-400 animate-pulse">
-                    🎯 Modo Cazador Activo
+                  <div className="mt-1 text-[10px] text-yellow-400 animate-pulse">
+                    🎯 Modo Cazador
                   </div>
                 )}
                 {earthquake && (
-                  <div className="mt-1 text-xs text-red-400 animate-pulse">
-                    🌊 TERREMOTO: {earthquakeMagnitude.toFixed(1)}
+                  <div className="mt-1 text-[10px] text-red-400 animate-pulse">
+                    🌊 {earthquakeMagnitude.toFixed(1)}
                   </div>
                 )}
                 {drawMode && (
-                  <div className="mt-1 text-xs text-pink-400 animate-pulse">
-                    ✏️ Modo Dibujo Activo
+                  <div className="mt-1 text-[10px] text-pink-400 animate-pulse">
+                    ✏️ Dibujo
                   </div>
                 )}
                 {timeMode && (
-                  <div className="mt-1 text-xs text-purple-400 animate-pulse">
-                    ⏳ Tiempo: {timeValue.toFixed(2)}
+                  <div className="mt-1 text-[10px] text-purple-400 animate-pulse">
+                    ⏳ {timeValue.toFixed(2)}
                   </div>
                 )}
               </div>
@@ -379,39 +427,36 @@ export default function Page() {
               <div className="flex items-center gap-2 pointer-events-auto">
                 <motion.button
                   onClick={() => setIsAutoRotating(!isAutoRotating)}
-                  className={`p-3 rounded-lg glass-light transition-all ${
+                  className={`p-2 md:p-3 rounded-lg glass-light transition-all ${
                     isAutoRotating ? 'text-cyan-400 neon-border' : 'text-muted-foreground'
                   }`}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  aria-label="Toggle auto rotation"
                 >
-                  <RotateCw size={18} />
+                  <RotateCw size={16} className="md:size-[18px]" />
                 </motion.button>
                 <motion.button
                   onClick={() => setIsPresentationMode(!isPresentationMode)}
-                  className="p-3 rounded-lg glass-light text-muted-foreground hover:text-cyan-400 transition-colors"
+                  className="p-2 md:p-3 rounded-lg glass-light text-muted-foreground hover:text-cyan-400 transition-colors"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  aria-label="Toggle fullscreen presentation mode"
                 >
-                  {isPresentationMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                  {isPresentationMode ? <Minimize2 size={16} className="md:size-[18px]" /> : <Maximize2 size={16} className="md:size-[18px]" />}
                 </motion.button>
               </div>
             </div>
 
-            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
-              <div className="glass-light rounded-lg px-4 py-2 text-xs text-muted-foreground">
-                🖱️ Arrastrar para orbitar · 🔄 Scroll para zoom · 👆 Click para inspeccionar
-                {gameMode && ' · 🎯 Encuentra el extremo!'}
-                {drawMode && ' · ✏️ Dibuja sobre la superficie!'}
+            {/* Overlay inferior - Responsive */}
+            <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+              <div className="glass-light rounded-lg px-2 py-1 md:px-4 md:py-2 text-[8px] md:text-xs text-muted-foreground">
+                🖱️ Arrastrar · 🔄 Zoom
+                {gameMode && ' · 🎯 Cazar'}
+                {drawMode && ' · ✏️ Dibujar'}
               </div>
-              <div className="glass-light rounded-lg px-4 py-2 text-xs text-muted-foreground">
-                <span className="text-cyan-400">Mapa térmico</span> · {range.min.toFixed(2)} a {range.max.toFixed(2)}
-                {gameMode && <span className="ml-2 text-yellow-400">🏆 {score} pts</span>}
-                {quizScore > 0 && (
-                  <span className="ml-2 text-violet-400">🧠 Quiz: {quizScore}/5</span>
-                )}
+              <div className="glass-light rounded-lg px-2 py-1 md:px-4 md:py-2 text-[8px] md:text-xs text-muted-foreground">
+                <span className="text-cyan-400">Mapa</span> {range.min.toFixed(1)}-{range.max.toFixed(1)}
+                {gameMode && <span className="ml-2 text-yellow-400">🏆 {score}</span>}
+                {quizScore > 0 && <span className="ml-2 text-violet-400">🧠 {quizScore}/5</span>}
               </div>
             </div>
           </div>
