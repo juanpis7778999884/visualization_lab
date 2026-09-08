@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Target, ArrowUp, ArrowDown, Minus, Sparkles } from 'lucide-react'
-import { getPartialDerivativeX, getPartialDerivativeY, evaluateFunction } from '@/lib/math-utils'
+import { getPartialDerivativeX, getPartialDerivativeY, evaluateFunction, getExactHessian } from '@/lib/math-utils'
 import type { MathFunction } from '@/lib/types'
 
 interface CriticalPoint {
@@ -29,33 +29,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
   const [selectedPoint, setSelectedPoint] = useState<CriticalPoint | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // 🔥 NUEVO: Derivada segunda exacta para x^2 + y^2
-  const getExactHessian = (expression: string, x: number, y: number) => {
-    // Para funciones cuadráticas simples
-    if (expression === 'x^2 + y^2') {
-      return { fxx: 2, fyy: 2, fxy: 0, determinant: 4 }
-    }
-    if (expression === 'x^2 - y^2') {
-      return { fxx: 2, fyy: -2, fxy: 0, determinant: -4 }
-    }
-    if (expression === '-x^2 - y^2') {
-      return { fxx: -2, fyy: -2, fxy: 0, determinant: 4 }
-    }
-    
-    // Para otras funciones, usar numérico
-    const eps = 0.0001
-    
-    try {
-      const fxx = (evaluateFunction(expression, x + eps, y) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x - eps, y) || 0)
-      const fyy = (evaluateFunction(expression, x, y + eps) || 0) - 2 * (evaluateFunction(expression, x, y) || 0) + (evaluateFunction(expression, x, y - eps) || 0)
-      const fxy = ((evaluateFunction(expression, x + eps, y + eps) || 0) - (evaluateFunction(expression, x + eps, y - eps) || 0) - (evaluateFunction(expression, x - eps, y + eps) || 0) + (evaluateFunction(expression, x - eps, y - eps) || 0)) / 4
-      
-      return { fxx, fyy, fxy, determinant: fxx * fyy - fxy * fxy }
-    } catch {
-      return { fxx: 0, fyy: 0, fxy: 0, determinant: 0 }
-    }
-  }
-
   const analyze = () => {
     console.log('🔍 Iniciando análisis...')
     console.log('📐 Función:', func.expression)
@@ -78,11 +51,9 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       const stepY = (yMax - yMin) / resolution
       
       console.log(`🔍 Resolución: ${resolution}x${resolution}`)
-      console.log(`🔍 Step X: ${stepX}, Step Y: ${stepY}`)
 
       let totalPoints = 0
 
-      // 🔥 MEJORADO: Buscar en toda la malla
       for (let i = 0; i <= resolution; i++) {
         for (let j = 0; j <= resolution; j++) {
           const x = xMin + i * stepX
@@ -93,37 +64,39 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           
           totalPoints++
           
-          // 🔥 TOLERANCIA MÁS ALTA
           if (fx !== null && fy !== null && !isNaN(fx) && !isNaN(fy) && Math.abs(fx) < 0.1 && Math.abs(fy) < 0.1) {
             const z = evaluateFunction(func.expression, x, y) || 0
             
-            // 🔥 Usar Hessiano exacto o numérico
             const hessian = getExactHessian(func.expression, x, y)
             
             let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
             
-            // 🔥 Clasificación con umbrales más pequeños
-            if (Math.abs(hessian.determinant) > 0.00001) {
+            if (Math.abs(hessian.determinant) > 0.000001) {
               if (hessian.determinant > 0) {
                 type = hessian.fxx > 0 ? 'min' : 'max'
               } else {
                 type = 'saddle'
               }
+            } else {
+              if (Math.abs(hessian.fxx) > 0.001) {
+                type = hessian.fxx > 0 ? 'min' : 'max'
+              } else if (Math.abs(hessian.fyy) > 0.001) {
+                type = hessian.fyy > 0 ? 'min' : 'max'
+              }
             }
             
-            // 🔥 SIEMPRE guardar el punto si el gradiente es ≈ 0
+            console.log(`🎯 Punto en (${x.toFixed(4)}, ${y.toFixed(4)}) → fx=${fx.toFixed(4)}, fy=${fy.toFixed(4)}, tipo=${type}`)
+            
             foundPoints.push({
               x,
               y,
               z,
-              type,
+              type: type !== 'none' ? type : 'none',
               hessian: hessian.determinant,
               fxx: hessian.fxx,
               fyy: hessian.fyy,
               fxy: hessian.fxy
             })
-            
-            console.log(`🎯 Punto encontrado en (${x.toFixed(4)}, ${y.toFixed(4)}) con tipo: ${type}`)
           }
         }
       }
@@ -131,7 +104,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
       console.log(`🔍 Puntos analizados: ${totalPoints}`)
       console.log(`🎯 Puntos con gradiente ≈ 0: ${foundPoints.length}`)
 
-      // 🔥 Filtrar duplicados
       const filtered: CriticalPoint[] = []
       const threshold = stepX * 0.9
       
@@ -144,23 +116,21 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
           }
         }
         if (!isDuplicate) {
-          // 🔥 Re-calcular tipo con Hessiano exacto
           const hessian = getExactHessian(func.expression, p.x, p.y)
-          let type: 'max' | 'min' | 'saddle' | 'none' = 'none'
+          let type: 'max' | 'min' | 'saddle' | 'none' = p.type
           
-          if (Math.abs(hessian.determinant) > 0.00001) {
-            if (hessian.determinant > 0) {
-              type = hessian.fxx > 0 ? 'min' : 'max'
+          if (type === 'none') {
+            if (Math.abs(hessian.determinant) > 0.000001) {
+              if (hessian.determinant > 0) {
+                type = hessian.fxx > 0 ? 'min' : 'max'
+              } else {
+                type = 'saddle'
+              }
             } else {
-              type = 'saddle'
+              type = Math.abs(hessian.fxx) > Math.abs(hessian.fyy) 
+                ? (hessian.fxx > 0 ? 'min' : 'max')
+                : (hessian.fyy > 0 ? 'min' : 'max')
             }
-          }
-          
-          // 🔥 Si el Hessiano es ~0 pero el gradiente es 0, es un punto degenerado
-          if (type === 'none' && Math.abs(hessian.determinant) < 0.00001) {
-            // Para x^2 + y^2 en (0,0) el Hessiano es 4, no es cero
-            // Solo para funciones como x^3
-            type = 'none'
           }
           
           filtered.push({
@@ -174,10 +144,8 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
         }
       }
 
-      // 🔥 NO filtrar los que tienen tipo 'none' - mostrarlos como "Punto crítico"
       const finalPoints = filtered.filter(p => p.type !== 'none')
 
-      // Ordenar
       finalPoints.sort((a, b) => {
         const order: Record<string, number> = { max: 0, saddle: 1, min: 2 }
         return order[a.type] - order[b.type]
@@ -185,10 +153,6 @@ export function CriticalPointsAnalyzer({ func, onPointClick }: CriticalPointsAna
 
       setPoints(finalPoints)
       console.log(`✅ Análisis completado: ${finalPoints.length} puntos críticos únicos`)
-      
-      if (finalPoints.length === 0) {
-        console.log('💡 Prueba con x^2 + y^2 o x^2 - y^2 para verificar')
-      }
       
     } catch (err) {
       console.error('❌ Error en el análisis:', err)

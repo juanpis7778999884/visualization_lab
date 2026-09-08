@@ -230,6 +230,7 @@ export default function Page() {
       <Header
         isPresentationMode={isPresentationMode}
         onPresentationModeChange={setIsPresentationMode}
+        onSkipTutorial={() => setShowTutorial(false)}
       />
 
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}

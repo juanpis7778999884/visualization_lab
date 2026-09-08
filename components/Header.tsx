@@ -1,14 +1,15 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Zap } from 'lucide-react'
+import { Zap, SkipForward } from 'lucide-react'
 
 interface HeaderProps {
   isPresentationMode: boolean
   onPresentationModeChange: (mode: boolean) => void
+  onSkipTutorial?: () => void
 }
 
-export function Header({ isPresentationMode, onPresentationModeChange }: HeaderProps) {
+export function Header({ isPresentationMode, onPresentationModeChange, onSkipTutorial }: HeaderProps) {
   return (
     <motion.header
       className="fixed top-0 left-0 right-0 z-40 glass border-b border-white/10"
@@ -26,18 +27,32 @@ export function Header({ isPresentationMode, onPresentationModeChange }: HeaderP
           </h1>
         </div>
 
-        <motion.button
-          onClick={() => onPresentationModeChange(!isPresentationMode)}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            isPresentationMode
-              ? 'bg-gradient-to-r from-cyan-400 to-violet-500 text-black'
-              : 'glass text-cyan-400 hover:bg-white/10'
-          }`}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          {isPresentationMode ? '✓ Presentation' : 'Presentation Mode'}
-        </motion.button>
+        <div className="flex items-center gap-3">
+          {onSkipTutorial && (
+            <motion.button
+              onClick={onSkipTutorial}
+              className="px-3 py-2 rounded-lg text-xs font-medium glass text-muted-foreground hover:text-cyan-400 hover:bg-white/10 transition-all flex items-center gap-1"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <SkipForward size={14} />
+              Omitir Tutorial
+            </motion.button>
+          )}
+
+          <motion.button
+            onClick={() => onPresentationModeChange(!isPresentationMode)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              isPresentationMode
+                ? 'bg-gradient-to-r from-cyan-400 to-violet-500 text-black'
+                : 'glass text-cyan-400 hover:bg-white/10'
+            }`}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            {isPresentationMode ? '✓ Presentation' : 'Presentation Mode'}
+          </motion.button>
+        </div>
       </div>
     </motion.header>
   )
