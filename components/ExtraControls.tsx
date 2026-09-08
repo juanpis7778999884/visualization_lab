@@ -1,7 +1,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Earthquake, Music, PenTool, Clock, Flame, Sparkles } from 'lucide-react'
+import { 
+  Activity,  // ← Reemplaza Earthquake
+  Music, 
+  PenTool, 
+  Clock, 
+  Sparkles 
+} from 'lucide-react'
 
 interface ExtraControlsProps {
   earthquake: boolean
@@ -53,7 +59,7 @@ export function ExtraControls({
               : 'glass text-muted-foreground'
           }`}
         >
-          <Earthquake size={16} className="mx-auto mb-1" />
+          <Activity size={16} className="mx-auto mb-1" />
           Terremoto
         </button>
 
