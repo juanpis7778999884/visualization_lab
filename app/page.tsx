@@ -68,6 +68,7 @@ export default function Page() {
   const [showQuiz, setShowQuiz] = useState(false)
   const [quizScore, setQuizScore] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   // ============================================================
   // LOGROS
@@ -110,6 +111,16 @@ export default function Page() {
   useEffect(() => {
     if (quizScore === 5) unlockAchievement('quiz-master')
   }, [quizScore])
+
+  // 🔥 DETECTAR MÓVIL (cliente-side)
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // ============================================================
   // FUNCIONES DEL JUEGO
@@ -238,6 +249,9 @@ export default function Page() {
   // ============================================================
   // RENDER
   // ============================================================
+  // 🔥 DETERMINAR SI EL PANEL ESTÁ ABIERTO EN MÓVIL
+  const isPanelVisible = isMobileMenuOpen || !isMobile
+
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden">
       <ParticleBackground />
@@ -253,14 +267,14 @@ export default function Page() {
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
 
       <div className="relative min-h-screen pt-20">
-        {/* Panel lateral - Móvil: overlay deslizable */}
+        {/* Panel lateral */}
         <AnimatePresence>
           {!isPresentationMode && (
             <>
               {/* Overlay oscuro para móvil */}
-              {isMobileMenuOpen && (
+              {isMobileMenuOpen && isMobile && (
                 <motion.div
-                  className="fixed inset-0 z-20 bg-black/70 backdrop-blur-sm md:hidden"
+                  className="fixed inset-0 z-20 bg-black/70 backdrop-blur-sm"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -272,19 +286,22 @@ export default function Page() {
                 className={`
                   fixed z-30 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-cyan-400/30
                   transition-all duration-300 ease-in-out
-                  ${isMobileMenuOpen 
-                    ? 'left-0 right-0 top-20 bottom-0 p-4 bg-background/95 backdrop-blur-md' 
-                    : '-left-full md:left-4 md:top-24 md:bottom-4 md:w-80 md:p-0'
+                  ${isMobile 
+                    ? (isMobileMenuOpen 
+                        ? 'left-0 right-0 top-20 bottom-0 p-4 bg-background/95 backdrop-blur-md' 
+                        : '-left-full')
+                    : 'left-4 top-24 bottom-4 w-80'
                   }
-                  ${!isPresentationMode && 'md:block'}
                 `}
-                initial={{ x: -400 }}
-                animate={{ 
-                  x: isMobileMenuOpen ? 0 : (window.innerWidth < 768 ? -400 : 0),
+                initial={false}
+                animate={{
+                  x: isMobile 
+                    ? (isMobileMenuOpen ? 0 : -400) 
+                    : 0
                 }}
                 transition={{ duration: 0.3 }}
               >
-                <div className="md:space-y-3 h-full overflow-y-auto pb-20 md:pb-0">
+                <div className={isMobile ? 'h-full overflow-y-auto pb-20' : 'space-y-3'}>
                   <FunctionPanel
                     currentFunction={currentFunction}
                     onFunctionChange={handleFunctionChange}
@@ -374,7 +391,7 @@ export default function Page() {
           className={`
             h-[calc(100vh-6rem)] relative transition-all duration-300
             ${isPresentationMode ? 'w-full' : 'w-full md:ml-[336px] md:mr-4'}
-            ${isMobileMenuOpen ? 'opacity-30' : 'opacity-100'}
+            ${isMobile && isMobileMenuOpen ? 'opacity-30' : 'opacity-100'}
           `}
         >
           <div className="absolute inset-0 glass rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-cyan-400/10">
