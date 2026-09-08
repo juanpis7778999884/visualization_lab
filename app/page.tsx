@@ -26,6 +26,7 @@ import { ExtraControls } from '@/components/ExtraControls'
 import { Tutorial } from '@/components/Tutorial'
 import { MathQuiz } from '@/components/MathQuiz'
 import { ParticleFire } from '@/components/ParticleFire'
+import { CriticalPointsAnalyzer } from '@/components/CriticalPointsAnalyzer'
 import { DEFAULT_FUNCTION } from '@/lib/functions'
 import { calculateDomainRange, getPartialDerivativeX, getPartialDerivativeY } from '@/lib/math-utils'
 import type { MathFunction } from '@/lib/types'
@@ -268,6 +269,12 @@ export default function Page() {
                 max={range.max}
                 value={contourLevel}
                 onChange={setContourLevel}
+              />
+
+              {/* 🧠 ANALIZADOR DE PUNTOS CRÍTICOS (NUEVO) */}
+              <CriticalPointsAnalyzer
+                func={currentFunction}
+                onPointClick={handlePointClick}
               />
 
               {/* 🎮 JUEGO: Cazador de extremos */}

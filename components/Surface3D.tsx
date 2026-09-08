@@ -8,6 +8,13 @@ import { generateSurfaceData, calculateContourLine, evaluateFunction } from '@/l
 import type { MathFunction } from '@/lib/types'
 import { ThreeEvent } from '@react-three/fiber'
 
+interface CriticalPoint {
+  x: number
+  y: number
+  z: number
+  type: 'max' | 'min' | 'saddle'
+}
+
 interface Surface3DProps {
   func: MathFunction
   onPointClick?: (point: { x: number; y: number; z: number }) => void
@@ -17,6 +24,7 @@ interface Surface3DProps {
   earthquakeMagnitude?: number
   drawMode?: boolean
   timeValue?: number
+  criticalPoints?: CriticalPoint[]
 }
 
 function SurfaceMesh({ 
@@ -26,7 +34,8 @@ function SurfaceMesh({
   earthquake = false,
   earthquakeMagnitude = 0.5,
   drawMode = false,
-  timeValue = 0
+  timeValue = 0,
+  criticalPoints = []
 }: Surface3DProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [hovered, setHovered] = useState(false)
@@ -39,7 +48,6 @@ function SurfaceMesh({
   const generatedGeometry = useMemo(() => {
     let expression = func.expression
     
-    // Si estamos en modo tiempo, reemplazar t
     if (timeValue !== 0) {
       expression = expression.replace(/t/g, `(${timeValue})`)
     }
@@ -54,7 +62,6 @@ function SurfaceMesh({
     return nextGeometry
   }, [func, timeValue])
 
-  // Actualizar geometría cuando cambia
   useEffect(() => {
     setGeometry(generatedGeometry)
     const positions = generatedGeometry.attributes.position.array
@@ -65,7 +72,6 @@ function SurfaceMesh({
   useFrame(({ clock }) => {
     if (!geometry || !originalPositions) return
     if (!earthquake || earthquakeMagnitude === 0) {
-      // Restaurar posiciones originales
       const pos = geometry.attributes.position.array
       for (let i = 0; i < pos.length; i++) {
         pos[i] = originalPositions[i]
@@ -105,28 +111,22 @@ function SurfaceMesh({
     }
   }, [func, contourLevel, timeValue])
 
-  // Manejador de clic
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()
     if (onPointClick) {
-      const mesh = event.object as THREE.Mesh
-      if (mesh.geometry instanceof THREE.BufferGeometry) {
-        const point = event.point as THREE.Vector3
-        onPointClick({
-          x: point.x,
-          y: point.z,
-          z: point.y,
-        })
-      }
+      const point = event.point as THREE.Vector3
+      onPointClick({
+        x: point.x,
+        y: point.z,
+        z: point.y,
+      })
     }
   }
 
-  // Manejador de movimiento para dibujo
   const handlePointerMove = (event: ThreeEvent<PointerEvent>) => {
     if (!drawMode) return
     const point = event.point as THREE.Vector3
     if (point) {
-      // Proyectar a la superficie
       let expression = func.expression
       if (timeValue !== 0) {
         expression = expression.replace(/t/g, `(${timeValue})`)
@@ -181,6 +181,17 @@ function SurfaceMesh({
           opacity={earthquake ? 1 : 0.8}
         />
       )}
+
+      {/* 🔥 PUNTOS CRÍTICOS (NUEVO) */}
+      {criticalPoints.map((p, i) => {
+        const color = p.type === 'max' ? 0x00ff00 : p.type === 'min' ? 0x0088ff : 0xffcc00
+        return (
+          <mesh key={i} position={[p.x, p.z, p.y]}>
+            <sphereGeometry args={[0.08]} />
+            <meshBasicMaterial color={color} />
+          </mesh>
+        )
+      })}
 
       {/* Líneas dibujadas */}
       {drawnPoints.length > 1 && (
